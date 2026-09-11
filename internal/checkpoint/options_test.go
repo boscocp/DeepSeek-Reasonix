@@ -43,7 +43,7 @@ func TestNewIgnoresNilOption(t *testing.T) {
 // turn ends up with a restorable payload on disk.
 func seedTurns(t *testing.T, s *Store, root string, turns int, body string) {
 	t.Helper()
-	for i := 0; i < turns; i++ {
+	for i := range turns {
 		path := filepath.Join(root, fmt.Sprintf("f%d.txt", i))
 		original := fmt.Sprintf("turno %d\n%s", i, body)
 		if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
