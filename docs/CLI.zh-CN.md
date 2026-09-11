@@ -160,6 +160,9 @@ reasonix run --metrics run.json --trajectory run.trajectory.jsonl "修复失败�
 回合运行期间，宿主会发布一个不含内容的阶段标记，供前端显示当前回合正在做
 什么。CLI 显示在加载行上，桌面端显示在输入框区域。
 
+这些阶段描述执行计时，不代表验证证据。桌面端检查结果卡由实际运行中的验证工具
+驱动，不根据阶段名称生成。
+
 | 阶段 | 触发时机 | `capability_phases` 桶 |
 | --- | --- | --- |
 | `working` | 回合开始时、每批工具执行返回后，以及最终就绪检查之后 | `ProviderWaitMs` |

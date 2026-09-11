@@ -184,6 +184,9 @@ While a turn runs, the host publishes a content-free phase so a frontend can
 say what the turn is doing. The CLI shows it on the spinner line; the desktop
 app shows it in the composer.
 
+These phases describe execution timing, not verification evidence. Desktop
+check-result cards follow actual running verification tools, not phase names.
+
 | Phase | Emitted when | `capability_phases` bucket |
 | --- | --- | --- |
 | `working` | the turn starts, after each tool batch returns, and after the final-readiness check | `ProviderWaitMs` |
