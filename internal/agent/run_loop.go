@@ -414,29 +414,8 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		a.contextManager().ObserveUsage(usage)
 		return false, a.gracePause(state)
 	}
-	if readiness.reason != "" {
-		// Standard ends with its answer/quality summary. Delivery and Goal hand
-		// the structured gap to the controller, which exposes an explicit recovery
-		// action or lets the Goal FSM decide whether to continue.
-		if a.readinessPauseActive(readiness) {
-			event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessErrored, false))
-			a.pending.finalReadinessRecovery = true
-			a.persistFinalReadinessRecovery(readiness.missingIDs())
-			gaps := a.readinessOperationGaps()
-			reason := readiness.reason
-			if named := describeReadinessGaps(gaps); named != "" {
-				reason += "; " + named
-			}
-			return false, &FinalReadinessError{
-				Attempts:          1,
-				Reason:            reason,
-				Missing:           readiness.missingIDs(),
-				ContinuationClass: readiness.continuationClass(),
-				ProgressKey:       readiness.progressSignature(),
-				Operations:        gaps,
-			}
-		}
-		event.RecordReadinessAudit(a.svc.sink, readiness.audit(evidence.ReadinessAllowed, a.turn.readinessRecovered))
+	if stopped, err := a.handleReadinessGap(readiness); stopped {
+		return false, err
 	}
 	if !hasVisibleFinalAnswer(text) {
 		// Harness-style termination accepts a reasoning-only clean stop. Only

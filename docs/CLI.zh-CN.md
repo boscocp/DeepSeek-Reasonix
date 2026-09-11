@@ -162,16 +162,19 @@ reasonix run --metrics run.json --trajectory run.trajectory.jsonl "修复失败�
 
 | 阶段 | 触发时机 | `capability_phases` 桶 |
 | --- | --- | --- |
-| `working` | 回合开始时，以及每批工具执行返回之后 | `ProviderWaitMs` |
+| `working` | 回合开始时、每批工具执行返回后，以及最终就绪检查之后 | `ProviderWaitMs` |
 | `checking` | 即将执行一批工具时 | `ToolExecMs` |
 | `verifying` | 给出最终回答前运行最终就绪检查时 | `ToolExecMs` |
-| `reviewing` | 交付审查门检查一次改动时 | `ReviewMs` |
 
 某个阶段在下一个阶段开始时才计入对应的桶，因此 `--metrics` 中的耗时可以区分
 模型等待与工具执行，而无需重放整次运行。不足 1 毫秒的区间会被丢弃；以错误或
 暂停（而非给出回答）结束的回合不会计入最后一个区间，因此这些桶应视为下界，
-而不是对整个回合的完整划分。`SubagentWaitMs`、`UserWaitMs` 与 `CompactMs`
-目前没有发射点，保持为 0。
+而不是对整个回合的完整划分。
+
+工具批次内弹出的审批提示会计入 `ToolExecMs`：该批次从 `checking` 一直开到下一次
+`working`，而当前没有用户等待阶段的发射点。`ReviewMs`、`SubagentWaitMs`、
+`UserWaitMs` 与 `CompactMs` 保持为 0，因为回合内没有任何地方开启这些阶段——
+`reviewing` 只在运行退出时发布，那时回合的相位时钟已经关闭。
 
 ### 输出格式
 
