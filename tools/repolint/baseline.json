@@ -25,7 +25,7 @@
     "desktop/app.go": {
       "complexity": 55,
       "essay": 60,
-      "file-size": 10771,
+      "file-size": 10845,
       "function-size": 353,
       "struct-state": 10
     },
@@ -144,10 +144,10 @@
       "file-size": 244
     },
     "desktop/frontend/src/lib/types.ts": {
-      "file-size": 1557
+      "file-size": 1561
     },
     "desktop/frontend/src/lib/useController.ts": {
-      "file-size": 4176
+      "file-size": 4194
     },
     "desktop/heartbeat.go": {
       "essay": 7
