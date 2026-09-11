@@ -167,29 +167,6 @@ type Store struct {
 	protectTurns map[int]bool
 }
 
-// Option overrides a Store default at construction time.
-type Option func(*Store)
-
-// WithRetainCheckpoints caps how many turns of file payloads the store retains.
-// A value below 1 is ignored, leaving DefaultRetainCheckpoints in place.
-func WithRetainCheckpoints(turns int) Option {
-	return func(s *Store) {
-		if turns > 0 {
-			s.retainN = turns
-		}
-	}
-}
-
-// WithBlobQuota sets the soft byte budget for retained file payloads. A value
-// below 1 is ignored, leaving DefaultBlobQuotaBytes in place.
-func WithBlobQuota(bytes int64) Option {
-	return func(s *Store) {
-		if bytes > 0 {
-			s.blobQuota = bytes
-		}
-	}
-}
-
 // New returns a store for the given checkpoint dir and workspace root, loading any
 // checkpoints already persisted under dir. A "" dir disables persistence (the
 // store still works in memory for the session). Options override the retention
