@@ -22,6 +22,7 @@ export type EventKind =
   | "text"
   | "message"
   | "tool_dispatch"
+  | "tool_started"
   | "tool_result"
   | "tool_result_preview"
   | "turn_status"
@@ -50,7 +51,7 @@ export type EventKind =
   | "read_status"
   | "provider_unreachable";
 export type StreamAttemptAction = "begin" | "discard" | "commit";
-export type TurnStatus = "queued" | "in_progress" | "waiting_user" | "cancelling" | "completed" | "interrupted" | "failed" | "protocol_failed";
+export type TurnStatus = "queued" | "in_progress" | "waiting_user" | "cancelling" | "completed" | "interrupted" | "failed" | "protocol_failed" | "recovery_required";
 export interface TurnEventEnvelope {
   turnId: string;
   seq: number;
@@ -107,6 +108,7 @@ export interface WireShellExecution {
 }
 
 export interface WireTool {
+  diagnostic?: import("./readStatus").OperationDiagnostic;
 	verifying?: boolean;
   id?: string;
   name: string;
@@ -817,6 +819,7 @@ export interface ChangedFileInfo {
 export interface HistoryMessage {
 	completionReceipt?: WireCompletionReceipt;
 	completionSummary?: WireCompletionSummary;
+	readCompletion?: import("../generated/desktopContract.generated").ReadCompletion;
 	turnId?: string;
 	readPause?: import("./readPause").WireReadPause;
   role: string;
@@ -1237,6 +1240,9 @@ export interface WorkspaceChangesView {
   gitAvailable: boolean;
   gitErr?: string;
   gitBranch?: string;
+  added?: number;
+  removed?: number;
+  incomplete?: boolean;
 }
 
 export interface WorkspaceChangeDetailView {
@@ -1652,7 +1658,7 @@ export interface MemoryView {
 }
 
 // SettingsTab is the top-level navigation item in the Settings Centre modal.
-export type SettingsTab = "general" | "models" | "model-stats" | "providers" | "bots" | "mcp" | "remote" | "skills" | "subagents" | "plugins" | "memory" | "hooks" | "diagnostics" | "shortcuts" | "permissions" | "sandbox" | "network" | "appearance" | "storage" | "updates";
+export type SettingsTab = "general" | "models" | "model-stats" | "providers" | "bots" | "mcp" | "remote" | "skills" | "subagents" | "plugins" | "memory" | "hooks" | "diagnostics" | "shortcuts" | "permissions" | "sandbox" | "network" | "browser" | "appearance" | "storage" | "updates";
 
 /** Extension runtime doctor report from App.RuntimeDoctor. */
 export interface RuntimeDoctorReport {
@@ -1782,7 +1788,7 @@ export interface ProviderView {
   models: string[];
   visionModels: string[]; // legacy subset; new UI derives capability from modelOverrides
   visionModelsConfigured: boolean; // legacy explicit-list marker retained for old configs
-  visionCapability?: "configurable" | "unsupported"; // backend authority; absent on older Wails payloads
+  visionCapability?: "configurable" | "unsupported"; // backend authority; absent on older desktop payloads
   modelsUrl: string; // optional override for model discovery; empty derives from baseUrl
   default: string;
   apiKeyEnv: string;
@@ -1800,7 +1806,7 @@ export interface ProviderView {
   reasoningProtocol: string; // auto|deepseek|glm|kimi-k3|openai|none; empty = auto/model registry
   thinking: string; // provider-specific thinking override: ""|enabled|disabled|adaptive
   webSearch?: boolean; // expose a provider-executed web search tool when supported
-  serverWebSearchCapability?: boolean; // backend-verified provider capability; absent on older Wails payloads
+  serverWebSearchCapability?: boolean; // backend-verified provider capability; absent on older desktop payloads
   supportedEfforts: string[]; // custom /effort levels; empty = use built-in Kind/BaseURL default
   defaultEffort: string; // /effort level when user picks "auto" or unset; "" = supportedEfforts[0]
   modelOverrides?: ProviderModelOverrideView[] | null;
@@ -2271,7 +2277,7 @@ export type { ModelSettingsChange, ModelSettingsResult } from "./modelSettingsTy
 export interface DesktopStartupSettingsView {
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
-  desktopLayoutStyle: string; // "classic" | "workbench"
+  desktopLayoutStyle: string; // "workbench" | "creation"
   desktopTheme: string; // "auto" | "dark" | "light"
   desktopThemeStyle: string;
   desktopTerminalTheme: string; // "auto" follows app | "dark" | "light"
@@ -2280,7 +2286,7 @@ export interface DesktopStartupSettingsView {
   statusBarItems: string[]; // ordered visible status bar item ids
   checkUpdates: boolean; // check for new versions on startup
   updateChannel: string; // compatibility field; always "stable"
-  conversationWidth?: string; // "standard" | "full"; absent from older Wails payloads
+  conversationWidth?: string; // "standard" | "full"; absent from older desktop payloads
   configWarnings?: string[]; configWarningsRevision?: number; // load recovery notices and async delivery barrier
   configPath?: string;
 }
