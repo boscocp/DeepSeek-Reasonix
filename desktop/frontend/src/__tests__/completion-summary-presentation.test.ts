@@ -46,7 +46,7 @@ const answer: Item = { kind: "assistant", id: "a0", text: "done", reasoning: "",
 const outside = partitionTurnItems([history!, answer]).flatMap(p => p.outsideItems);
 assert.deepEqual(outside.map(i => i.id), ["a0", "history"], "sidecar placement preserves a result footer");
 for (const phase of ["checking", "verifying", "working", "reviewing"]) {
-  const plain = { ...initialState, items: [user], seq: 1 };
+  const plain: State = { ...initialState, items: [user], seq: 1 };
   const next = reducer(plain, { type: "event", e: { kind: "turn_phase", phase } });
   assert.equal(next.turnPhase, phase);
   assert.equal(next.completionSummary?.checking ?? false, false, `${phase} is not verification evidence`);
@@ -58,11 +58,11 @@ for (const phase of ["checking", "verifying", "working", "reviewing"]) {
   assert.equal(active.completionSummary?.checking, true, `${phase} preserves real running checks`);
   assert.equal(active.items.find(i => i.kind === "notice")!.id, resultId);
 }
-let live = reducer({ ...initialState, items: [user] }, { type: "event", e: { kind: "tool_dispatch", tool: { id: "live", name: "bash", args: '{"command":"go test ./..."}' } } });
-live = reducer(live, { type: "event", e: { kind: "tool_progress", tool: { id: "live", name: "bash", verifying: true, output: "running" } } });
+let live = reducer({ ...initialState, items: [user] }, { type: "event", e: { kind: "tool_dispatch", tool: { id: "live", name: "bash", readOnly: false, args: '{"command":"go test ./..."}' } } });
+live = reducer(live, { type: "event", e: { kind: "tool_progress", tool: { id: "live", name: "bash", readOnly: false, verifying: true, output: "running" } } });
 assert.equal(live.completionSummary?.checking, true);
 live = reducer(live, { type: "event", e: { kind: "turn_phase", phase: "working" } });
 assert.equal(live.completionSummary?.checking, true);
-live = reducer(live, { type: "event", e: { kind: "tool_result", tool: { id: "live", name: "bash", output: "PASS" } } });
+live = reducer(live, { type: "event", e: { kind: "tool_result", tool: { id: "live", name: "bash", readOnly: false, output: "PASS" } } });
 assert.equal(live.completionSummary?.checking, false);
 console.log("turn result truth, stable identity, concurrent checks, phases and history passed");
