@@ -15,6 +15,7 @@ await act(async () => root.render(<LocaleProvider><ProviderEditor initial={provi
 const save = document.querySelector('.provider-editor-footer .btn--primary') as HTMLButtonElement;
 const edit = () => (document.querySelector('.provider-model-draft__option button') as HTMLButtonElement).click();
 async function change(input: HTMLInputElement,value:string) { await act(async()=>{Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value')!.set!.call(input,value);input.dispatchEvent(new window.Event('input',{bubbles:true}));}); }
+async function changeSelect(select: HTMLSelectElement,value:string) { await act(async()=>{Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype,'value')!.set!.call(select,value);select.dispatchEvent(new window.Event('change',{bubbles:true}));}); }
 const dialog = () => document.querySelector('dialog')!;
 const submit = async () => act(async()=>{dialog().querySelector('form')!.dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true}));});
 assert.equal(save.disabled,true);
@@ -34,6 +35,7 @@ await change(numbers[0],'128000');await change(numbers[1],'4096');
 const image=dialog().querySelector<HTMLInputElement>('aside input:not(:disabled)')!;
 await act(async()=>image.click());
 assert.equal(dialog().querySelectorAll('aside input:disabled').length,4,'text is locked; video and PDF unavailable');
+await changeSelect(dialog().querySelector('select')!, '');
 await submit();
 assert.equal(save.disabled,false);
 assert.equal(document.querySelector('.provider-context-badge')!.textContent,'128K');
@@ -45,6 +47,15 @@ assert.equal(saved.modelOverrides[0].contextWindow,128000);
 assert.equal(saved.modelOverrides[0].maxOutputTokens,4096);
 assert.equal(saved.modelOverrides[0].vision,true);
 assert.equal(saved.modelOverrides[0].reasoningProtocol,'deepseek','preserves unrelated reasoning configuration');
+assert.deepEqual(saved.modelOverrides[0].supportedEfforts,['high'],'automatic default preserves configured effort options');
+assert.equal(saved.modelOverrides[0].defaultEffort,'','automatic default is stored without a model default');
+await act(async()=>edit());
+const highLevel = Array.from(dialog().querySelectorAll<HTMLInputElement>('.provider-model-dialog__effort-card input[type="checkbox"]')).find(input => input.getAttribute('aria-label') === 'high' || input.parentElement?.textContent?.trim() === 'high');
+assert.ok(highLevel, 'configured effort checkbox is rendered');
+await act(async()=>highLevel!.click());
+await submit();await act(async()=>save.click());
+assert.deepEqual(saved.modelOverrides[0].supportedEfforts,[],'removing the default effort clears the invalid option');
+assert.equal(saved.modelOverrides[0].defaultEffort,'','removing the default effort falls back to automatic');
 await act(async()=>edit());
 await act(async()=>{
   dialog().querySelectorAll<HTMLButtonElement>('section label button').forEach(button=>button.click());
@@ -58,8 +69,38 @@ const add=document.querySelector('.provider-model-toolbar .provider-model-draft_
 await act(async()=>add.click());
 await change(dialog().querySelector('.provider-model-dialog__id input')!,'model-a');await submit();
 assert.ok(dialog().querySelector('[role="alert"]'),'duplicate IDs rejected');
-await change(dialog().querySelector('.provider-model-dialog__id input')!,'model-b');await submit();
+assert.equal(dialog().querySelector('[role="alert"]')!.textContent,'This model ID is already added.');
+await change(dialog().querySelector('.provider-model-dialog__id input')!,'Model-A');await submit();
 assert.equal(document.querySelectorAll('.provider-model-draft__option').length,2);
 assert.equal(document.querySelectorAll('.provider-model-draft__option input:checked').length,2,'added model enabled in draft');
+await act(async()=>save.click());
+assert.deepEqual(saved.models,['model-a','Model-A'],'save preserves exact model IDs');
+// Deletion is a draft edit and clears only the exact model's state.
+const deletionProvider = {...provider, models:['model-a','Model-A'], visionModels:['model-a','Model-A'],
+  modelCapabilities:[{model:'model-a',state:'supported',inputModalities:['text','image']},{model:'Model-A',state:'supported',inputModalities:['text','image']}],
+  modelOverrides:['model-a','Model-A'].map(model=>({...provider.modelOverrides[0],model,contextWindow:128000,vision:true}))};
+saved=undefined;
+await act(async()=>root.render(<LocaleProvider><ProviderEditor key="deletion" initial={deletionProvider as any} kinds={['openai']} busy={false} onCancel={()=>{}} onSave={p=>{saved=p;}}/></LocaleProvider>));
+await act(async()=>edit());
+await act(async()=>(dialog().querySelector('footer .btn--danger') as HTMLButtonElement).click());
+assert.equal(document.querySelector('dialog'),null);
+assert.equal(document.querySelectorAll('.provider-model-draft__option').length,1);
+assert.equal(saved,undefined,'delete does not persist until the connection is saved');
+assert.ok(document.querySelector('.provider-model-draft__option')!.textContent!.includes('Model-A'));
+const deletionSave=document.querySelector('.provider-editor-footer .btn--primary') as HTMLButtonElement;
+await act(async()=>deletionSave.click());
+assert.deepEqual(saved.models,['Model-A']);
+assert.deepEqual(saved.visionModels,['Model-A']);
+assert.deepEqual(saved.modelOverrides.map((item:any)=>item.model),['Model-A']);
+assert.deepEqual(saved.modelCapabilities.map((item:any)=>item.model),['Model-A']);
+await act(async()=>(document.querySelector('.provider-model-toolbar .provider-model-draft__tools > button:nth-child(2)') as HTMLButtonElement).click());
+assert.equal(dialog().querySelector('footer .btn--danger'),null,'add dialog has no delete action');
+await change(dialog().querySelector('.provider-model-dialog__id input')!,'model-a');await submit();
+await act(async()=>deletionSave.click());
+assert.deepEqual(saved.visionModels,['Model-A'],'re-adding does not revive legacy vision');
+const restored=saved.modelOverrides.find((item:any)=>item.model==='model-a');
+assert.equal(restored?.contextWindow ?? 0,0);
+assert.equal(restored?.maxOutputTokens ?? 0,0);
+assert.equal(restored?.vision ?? null,null);
 await act(async()=>root.unmount());
 console.log('PASS: unified add/edit, isolated cancel, duplicate validation, complete model overrides and failed/successful save');

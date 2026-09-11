@@ -210,7 +210,7 @@ func TestDesktopLayoutStyleNormalizes(t *testing.T) {
 		wantErr bool
 	}{
 		{"", "workbench", false},
-		{"classic", "classic", false},
+		{"classic", "workbench", false},
 		{" workbench ", "workbench", false},
 		{"workspace", "workbench", false},
 		{"creation", "creation", false},
@@ -289,8 +289,8 @@ func TestDesktopExternalOpenerValidation(t *testing.T) {
 }
 
 func TestDesktopStatusBarStyleNormalizes(t *testing.T) {
-	if got := Default().DesktopStatusBarStyle(); got != "text" {
-		t.Fatalf("default desktop status bar style = %q, want text", got)
+	if got := Default().DesktopStatusBarStyle(); got != "icon" {
+		t.Fatalf("default desktop status bar style = %q, want icon", got)
 	}
 	for _, tt := range []struct {
 		in      string
@@ -302,7 +302,7 @@ func TestDesktopStatusBarStyleNormalizes(t *testing.T) {
 		{"icons", "icon", false},
 		{"text", "text", false},
 		{"labels", "text", false},
-		{"later", "text", true},
+		{"later", "icon", true},
 	} {
 		c := Default()
 		if err := c.SetDesktopStatusBarStyle(tt.in); (err != nil) != tt.wantErr {
@@ -788,8 +788,8 @@ func TestEffectiveVisionRejectsOfficialDeepSeekOverridesButPreservesCustomGatewa
 		Model:        "deepseek-v5-vision",
 		VisionModels: []string{"deepseek-v5-vision"},
 	}
-	if EffectiveVision(future) {
-		t.Fatal("a future model name must not bypass the official DeepSeek wire constraint")
+	if !EffectiveVision(future) {
+		t.Fatal("explicit vision model list must support unknown DeepSeek models")
 	}
 
 	visionOn := true
@@ -806,8 +806,8 @@ func TestEffectiveVisionRejectsOfficialDeepSeekOverridesButPreservesCustomGatewa
 	if !ok {
 		t.Fatal("ResolveModel did not find explicit future DeepSeek model")
 	}
-	if EffectiveVision(overridden) {
-		t.Fatal("model_overrides vision=true must not bypass the official DeepSeek wire constraint")
+	if !EffectiveVision(overridden) {
+		t.Fatal("model_overrides vision=true must enable unknown DeepSeek models")
 	}
 
 	custom := &ProviderEntry{

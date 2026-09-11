@@ -83,6 +83,7 @@ func (a *Agent) streamWithSamplingRecovery(parent context.Context, turn int) (te
 		id := newStreamAttemptID(attempt)
 		a.emitStreamAttempt(id, event.StreamAttemptBegin, attempt, "", nil)
 		sink, attemptSink := a.samplingAttemptSinks()
+		a.freezeVisibleReads(state.frozen.req.Messages)
 		result := a.runSamplingAttempt(ctx, turn, attemptSink, &state.frozen, id)
 		state.billable, _ = a.recordSamplingAttempt(state.billable, result)
 		if ctx.Err() != nil {
@@ -206,7 +207,7 @@ func (a *Agent) canWaitSampling(ctx context.Context, s *samplingRecoveryState, f
 	if role == turnContextPlanner {
 		return false
 	}
-	if SubagentDepth(ctx) != 0 || a.turn.graceRound || a.turn.recoveryGraceRound || s.partial || len(a.turn.writeRecovery) > 0 {
+	if SubagentDepth(ctx) != 0 || a.turn.graceRound || a.turn.recoveryGraceRound || s.partial || len(a.turn.writeRecovery) > 0 || len(a.turn.unknownRecovery) > 0 {
 		return false
 	}
 	return f.Retryable && (f.Phase == "connect" || (f.Phase == "headers" && (f.Status == 408 || f.Status == 429 || f.Status >= 500)))

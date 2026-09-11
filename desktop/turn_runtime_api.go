@@ -116,7 +116,7 @@ func (a *App) InterruptTurnWithInboxItemsForTab(tabID, turnID string, itemIDs []
 	}
 	result, err := ctrl.CancelWithInboxItemsResult(itemIDs, "desktop")
 	if err != nil {
-		return view, inboxWailsError(err)
+		return view, inboxBridgeError(err)
 	}
 	view.DiscardedItemIDs = append(view.DiscardedItemIDs, result.DiscardedItemIDs...)
 	view.Warning = result.Warning
@@ -164,6 +164,8 @@ type TurnEventReplayView struct {
 	ResetRequired      bool                 `json:"resetRequired"`
 	TranscriptRevision int64                `json:"transcriptRevision,omitempty"`
 	TranscriptDigest   string               `json:"transcriptDigest,omitempty"`
+	HeadID             string               `json:"headId,omitempty"`
+	LeafMessageID      string               `json:"leafMessageId,omitempty"`
 	RuntimeEpoch       string               `json:"runtimeEpoch,omitempty"`
 }
 
@@ -201,6 +203,7 @@ func (a *App) TurnEventsForTab(tabID string, afterSeq uint64) (TurnEventReplayVi
 		LatestSequence: replay.LatestSequence, NextAfterSequence: replay.NextAfterSequence,
 		HasMore: replay.HasMore, ResetRequired: replay.ResetRequired,
 		TranscriptRevision: replay.TranscriptRevision, TranscriptDigest: replay.TranscriptDigest,
+		HeadID: replay.HeadID, LeafMessageID: replay.LeafMessageID,
 		RuntimeEpoch: epoch,
 	}, err
 }
