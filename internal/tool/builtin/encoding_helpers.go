@@ -231,7 +231,8 @@ func fuzzyEditRanges(content, old string) []editRange {
 		return nil
 	}
 	if len(oldLines) > len(contentLines) {
-		// Only a longer blank-line run can make old outgrow the file.
+		// Equal-length window modes cannot match here, but a blank-line run
+		// reproduced longer than the file's still can.
 		return blankRunRanges(contentLines, oldLines)
 	}
 
@@ -272,12 +273,14 @@ func fuzzyEditRanges(content, old string) []editRange {
 }
 
 // blankRunRanges matches old against content treating each run of blank lines as
-// a single unit, so a model that reproduces one blank line where the file has
+// a single unit, so a caller that reproduces one blank line where the file has
 // two still lands on the intended span. Non-blank lines keep the exact-match
 // rule (modulo trailing whitespace), and a missing blank line never matches a
-// present one: only the run's length is free. The replacement still comes from
-// new_string, so an edit accepted here writes the caller's blank-line spacing,
-// not the file's.
+// present one: only a run's length is free, never its presence. This is a
+// standalone last resort, not a fuzzyMode: it deliberately does not also expand
+// tabs or strip read_file prefixes, so a span that drifted in two dimensions at
+// once still fails. The replacement comes from new_string, so an edit accepted
+// here writes the caller's blank-line spacing, not the file's.
 func blankRunRanges(contentLines, oldLines []lineSegment) []editRange {
 	c := blankRunTokens(contentLines)
 	o := blankRunTokens(oldLines)
