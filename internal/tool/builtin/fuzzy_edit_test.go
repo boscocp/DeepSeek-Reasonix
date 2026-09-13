@@ -322,6 +322,14 @@ func TestApplyOldStringEditBlankLineRunCases(t *testing.T) {
 			old:     "a = 1\n\nb = 2",
 			want:    false,
 		},
+		{
+			// Same token count on both sides, so only the blank-vs-non-blank
+			// check can reject this; matching would swallow the "b = 2" line.
+			name:    "blank line must not consume a non-blank line",
+			content: "a = 1\nb = 2\nc = 3\n",
+			old:     "a = 1\n\nc = 3",
+			want:    false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
