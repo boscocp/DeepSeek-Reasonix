@@ -335,3 +335,89 @@ func TestApplyOldStringEditBlankLineRunCases(t *testing.T) {
 		})
 	}
 }
+
+// TestMultiEditBlankLineRunReplaceAll covers the replace_all path, where the
+// relaxation is allowed to land on every occurrence instead of exactly one.
+func TestMultiEditBlankLineRunReplaceAll(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dup.py")
+	seed := "def f():\n    p\n\n\ndef g():\n    p\n\n\ndef f():\n    p\n\n\ndef g():\n    p\n"
+	if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := (multiEdit{}).Execute(context.Background(), argsJSON(t, map[string]any{
+		"path": path,
+		"edits": []map[string]any{{
+			"old_string":  "def f():\n    p\n\ndef g():\n    p",
+			"new_string":  "def fg():\n    p",
+			"replace_all": true,
+		}},
+	}))
+	if err != nil {
+		t.Fatalf("multi_edit: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "def fg():\n    p\n\n\ndef fg():\n    p\n"
+	if string(got) != want {
+		t.Fatalf("content = %q, want %q", got, want)
+	}
+}
+
+// TestEditFileBlankLineRunPreservesCRLF keeps the relaxation compatible with the
+// CRLF handling the other fuzzy modes already guarantee.
+func TestEditFileBlankLineRunPreservesCRLF(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "crlf.py")
+	seed := "a = 1\r\n\r\n\r\nb = 2\r\n"
+	if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := (editFile{}).Execute(context.Background(), argsJSON(t, map[string]any{
+		"path":       path,
+		"old_string": "a = 1\n\nb = 2",
+		"new_string": "a = 9\n\nb = 9",
+	}))
+	if err != nil {
+		t.Fatalf("edit_file: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "a = 9\r\n\r\nb = 9\r\n"
+	if string(got) != want {
+		t.Fatalf("content = %q, want %q", got, want)
+	}
+}
+
+// TestEditFileBlankLineRunKeepsFinalNewline guards the span end: an old_string
+// that omits the file's trailing newline must not consume it.
+func TestEditFileBlankLineRunKeepsFinalNewline(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tail.py")
+	seed := "a = 1\n\n\nb = 2\n"
+	if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := (editFile{}).Execute(context.Background(), argsJSON(t, map[string]any{
+		"path":       path,
+		"old_string": "a = 1\n\nb = 2",
+		"new_string": "a = 9\n\nb = 9",
+	}))
+	if err != nil {
+		t.Fatalf("edit_file: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "a = 9\n\nb = 9\n"; string(got) != want {
+		t.Fatalf("content = %q, want %q", got, want)
+	}
+}
