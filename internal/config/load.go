@@ -2451,6 +2451,12 @@ func mergeProviderModelOverride(dst *ProviderModelOverride, src ProviderModelOve
 		vision := *src.Vision
 		dst.Vision = &vision
 	}
+	// Tri-state like Vision: nil leaves the destination alone, and an explicit
+	// false is a decision to keep the paragraph off, not an absent value.
+	if src.ActionPolicy != nil {
+		policy := *src.ActionPolicy
+		dst.ActionPolicy = &policy
+	}
 	if src.ContextWindow > 0 {
 		dst.ContextWindow = src.ContextWindow
 	}
