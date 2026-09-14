@@ -1119,6 +1119,10 @@ func cloneModelOverrideMap(in map[string]ProviderModelOverride) map[string]Provi
 			vision := *v.Vision
 			v.Vision = &vision
 		}
+		if v.ActionPolicy != nil {
+			policy := *v.ActionPolicy
+			v.ActionPolicy = &policy
+		}
 		out[k] = v
 	}
 	return out
