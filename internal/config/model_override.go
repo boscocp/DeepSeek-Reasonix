@@ -24,6 +24,17 @@ type ProviderModelOverride struct {
 	ActionPolicy *bool `toml:"action_policy"`
 }
 
+// overrideBool folds one tri-state override. A nil next leaves the current
+// value alone — absent is not a decision — and a set one is copied into an
+// independent pointer so merged and cloned entries never share state.
+func overrideBool(current, next *bool) *bool {
+	if next == nil {
+		return current
+	}
+	v := *next
+	return &v
+}
+
 func (e *ProviderEntry) applyModelOverride() {
 	if e == nil || len(e.ModelOverrides) == 0 {
 		return
