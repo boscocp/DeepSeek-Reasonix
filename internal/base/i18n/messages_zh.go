@@ -127,6 +127,7 @@ var Chinese = Messages{
 	NotifyAsk:                       "模型问了你一个问题",
 	ApprovalNeededFmt:               "需要审批：%s",
 	ApprovalNeededWithSubjectFmt:    "需要审批：%s %s",
+	AnswerNeededFmt:                 "需要回答：%s",
 	ToolApprovalSourceFmt:           "来源: %s",
 	ToolApprovalBuiltIn:             "内置工具",
 	ToolApprovalImageUse:            "将读取提供的图片用于图像理解。",
