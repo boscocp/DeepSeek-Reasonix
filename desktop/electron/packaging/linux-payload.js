@@ -24,6 +24,7 @@ fs.mkdirSync(OUT, { recursive: true });
 const built = spawnSync("go", ["build", "-o", path.join(OUT, HELPER), "../cmd/update-helper"], {
   cwd: path.join(__dirname, ".."),
   stdio: "inherit",
+  env: { ...process.env, CGO_ENABLED: "0" },
 });
 if (built.status !== 0) {
   console.error(`building ${HELPER} failed`);
