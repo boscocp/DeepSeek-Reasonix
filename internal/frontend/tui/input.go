@@ -223,6 +223,10 @@ func (m *model) send(steer bool) tea.Cmd {
 	case display == "/resume":
 		m.composer.Reset()
 		return m.openPicker()
+	case display == "/version":
+		m.composer.Reset()
+		m.tr.AddNotice("info", "reasonix "+m.opts.Version)
+		return m.commit()
 	}
 	text := m.pastes.expand(display)
 	m.history = append(m.history, display)

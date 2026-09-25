@@ -1039,7 +1039,7 @@ convenient.
 In an interactive `reasonix` session, built-in commands (`/compact`, `/context`, `/new`, `/clear`, `/rewind`,
 `/tree`, `/branch`, `/switch`, `/todo`, `/model`, `/work-mode`, `/mcp`, `/skills`, `/hooks`,
 `/memory`, `/goal`, `/output-style`, `/sandbox`, `/language`,
-`/reasoning-language`, `/help`) run
+`/reasoning-language`, `/help`, `/version`) run
 locally — `/help` lists them all. Built-in **skills** such as `/init`,
 `/explore`, `/test`, and `/reasonix-guide` also appear in the slash menu and via
 `run_skill` (bodies load on demand; only the index line is cache-stable). Use
