@@ -22,11 +22,22 @@ import "strings"
 // of filepath.Ext.
 func IsSessionTranscriptName(name string) bool {
 	name = strings.TrimSpace(name)
-	return strings.HasSuffix(name, ".jsonl") &&
-		!strings.HasSuffix(name, ".events.jsonl") &&
-		!strings.HasSuffix(name, ".turns.jsonl") &&
-		!strings.HasSuffix(name, ".conflicts.jsonl") &&
-		!strings.HasSuffix(name, ".guardian.jsonl")
+	if !strings.HasSuffix(name, ".jsonl") {
+		return false
+	}
+	for _, suffix := range sessionJSONLSidecars {
+		if strings.HasSuffix(name, suffix) {
+			return false
+		}
+	}
+	return true
+}
+
+// sessionJSONLSidecars end in .jsonl beside a transcript without being one.
+// The last three are written by Reasonix 2.x, which shares this directory.
+var sessionJSONLSidecars = []string{
+	".events.jsonl", ".turns.jsonl", ".conflicts.jsonl", ".guardian.jsonl",
+	".wire.jsonl", ".adjudication.jsonl", ".execution.jsonl",
 }
 
 // SessionRecoveryState is the persisted Auto-mode recovery checkpoint state
