@@ -22,6 +22,7 @@ func normalizeLoadedConfig(cfg *Config) error {
 	normalizeLegacyStepFunBaseURLs(cfg)
 	normalizeLegacyLongCatContextWindows(cfg)
 	normalizeLegacyQwenContextWindows(cfg)
+	normalizeLegacyStepFunContextWindows(cfg)
 	normalizeLegacyKimiK3Catalog(cfg)
 	normalizeOpenCodeGoRuntimeCompatibility(cfg)
 	normalizeLegacyOpenCodeGoInstalls(cfg)
