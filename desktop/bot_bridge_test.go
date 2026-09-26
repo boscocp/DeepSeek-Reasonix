@@ -306,6 +306,23 @@ func TestBridgeApprovalNotifiesWatchersAndRoutesApproval(t *testing.T) {
 	}
 }
 
+// The desktop replays a waiting prompt whenever it reconciles a tab. A replay
+// rebuilds a card; it is not a new request, so a watcher is pinged once (#9156).
+func TestBridgeReplayedApprovalPushesOnce(t *testing.T) {
+	env := newBridgeTestEnv([]TabMeta{{ID: "tab-1", Label: "会话"}})
+	env.hub.SetWatch(testWatchRoute(), true)
+	approval := event.Approval{ID: "appr-9", Tool: "bash", Subject: "go test ./..."}
+
+	env.hub.observe("tab-1", event.Event{Kind: event.ApprovalRequest, Approval: approval})
+	env.waitNotification(t)
+	env.hub.observe("tab-1", event.Event{Kind: event.ApprovalRequest, Approval: approval, Replayed: true})
+	env.expectNoNotification(t)
+
+	if _, err := env.hub.Approve("appr-9", true); err != nil {
+		t.Fatalf("Approve after a replay: %v", err)
+	}
+}
+
 func TestBridgePendingRecordedWithoutWatchers(t *testing.T) {
 	env := newBridgeTestEnv([]TabMeta{{ID: "tab-1", Label: "会话"}})
 
