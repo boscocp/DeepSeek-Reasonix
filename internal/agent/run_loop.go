@@ -147,7 +147,7 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string, pinned pinnedRev
 	if err := a.appendPinnedRevisionAndUser(ctx, pinned, userMessage); err != nil {
 		return rawInput, nil, err
 	}
-	emitAdmittedUserMessage(a.svc.sink, userMessage)
+	a.admitUserMessage(ctx, userMessage)
 
 	// The loop fields join the classification computed above rather than
 	// opening a second object: one turn, one turnRuntime. The zero values the

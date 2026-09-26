@@ -17,6 +17,10 @@ type SessionCheckpointBoundary string
 const (
 	CheckpointBeforeModel   SessionCheckpointBoundary = "before_model"
 	CheckpointBeforeTopTool SessionCheckpointBoundary = "before_top_level_tool"
+	// CheckpointUserAdmitted follows the admitted user message. It is advisory:
+	// a store that already made the message durable ignores it, and a failed
+	// save does not refuse the turn.
+	CheckpointUserAdmitted SessionCheckpointBoundary = "user_admitted"
 )
 
 // SessionCheckpointer makes the side-effect boundary explicit without coupling
@@ -135,6 +139,15 @@ func (a *Agent) confirmPendingModelContext(ctx context.Context) error {
 func cloneSessionModelContextCommit(commit SessionModelContextCommit) SessionModelContextCommit {
 	commit.Messages = freezeProviderRequest(provider.Request{Messages: commit.Messages}).Messages
 	return commit
+}
+
+// admitUserMessage publishes an admitted user message and asks the session to
+// make it durable before the model is sampled.
+func (a *Agent) admitUserMessage(ctx context.Context, user provider.Message) {
+	emitAdmittedUserMessage(a.svc.sink, user)
+	if a.svc.sessionCheckpointer != nil {
+		_ = a.svc.sessionCheckpointer.CheckpointSession(ctx, CheckpointUserAdmitted)
+	}
 }
 
 func sessionSaveFailure(err error) error {

@@ -31,7 +31,8 @@ func (s *Session) RecoverInterrupted(ctx context.Context) (Commit, bool, error) 
 	if turnID == "" {
 		return Commit{}, false, nil
 	}
-	events := ClosureEvents(snapshot.Projection, "unavailable", "previous runtime exited before recording a result")
+	events := streamCheckpointRecoveryEvents(snapshot.Projection)
+	events = append(events, ClosureEvents(snapshot.Projection, "unavailable", "previous runtime exited before recording a result")...)
 	terminal, _ := json.Marshal(map[string]any{"status": event.TurnInterrupted})
 	events = append(events, Event{Kind: "turn/end", Payload: terminal})
 	commit, err := s.Append(ctx, Batch{OperationID: "turn-finalize:" + turnID, TurnID: turnID, Events: events})
