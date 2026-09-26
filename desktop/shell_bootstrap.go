@@ -44,7 +44,7 @@ func bootstrapShell(exe, goos string, args, env []string) (handled bool, exitCod
 	if !ok {
 		return false, 0
 	}
-	cmd := proc.VisibleCommand(shell, args...)
+	cmd := proc.VisibleCommand(shell, shellOzoneArgs(goos, args, envLookup(env))...)
 	cmd.Env = processEnvWithOverrides(env, map[string]string{shellServiceEnv: exe})
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	detachShellProcess(cmd)
