@@ -63,3 +63,33 @@ func TestLegacyChatURLRemainsIgnored(t *testing.T) {
 		t.Fatalf("requestURL = %q, want legacy base-derived endpoint", got)
 	}
 }
+
+func TestStreamIgnoresRequestURLThatRepeatsBaseURL(t *testing.T) {
+	for _, repeated := range []string{"/api", "/api/v1"} {
+		t.Run(repeated, func(t *testing.T) {
+			var got string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got = r.URL.RequestURI()
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = io.WriteString(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+			}))
+			defer srv.Close()
+			p, err := New(provider.Config{
+				Name: "relay", APIKey: "key", BaseURL: srv.URL + "/api/v1", Model: "m",
+				Extra: map[string]any{"request_url": srv.URL + repeated},
+			})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			stream, err := p.Stream(context.Background(), provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}})
+			if err != nil {
+				t.Fatalf("Stream: %v", err)
+			}
+			for range stream {
+			}
+			if got != "/api/v1/messages" {
+				t.Fatalf("POST %q, want /api/v1/messages", got)
+			}
+		})
+	}
+}

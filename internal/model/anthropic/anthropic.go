@@ -91,7 +91,7 @@ func New(cfg provider.Config) (provider.Provider, error) {
 	}
 	requestURL, _ := cfg.Extra["request_url"].(string)
 	requestURL = strings.TrimSpace(requestURL)
-	if requestURL == "" {
+	if requestURL == "" || provider.EndpointOverrideRepeatsBase(requestURL, root, root+"/v1") {
 		requestURL = root + "/v1/messages"
 	}
 	officialDeepSeek := openai.IsDeepSeek(root)
