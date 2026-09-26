@@ -58,15 +58,16 @@ var (
 )
 
 type Manifest struct {
-	SchemaVersion    int       `json:"schemaVersion"`
-	Codec            string    `json:"codec"`
-	StorageRevision  int       `json:"storageRevision,omitempty"`
-	ContentRoot      string    `json:"contentRoot,omitempty"`
-	SessionID        string    `json:"sessionId"`
-	CreatedAt        time.Time `json:"createdAt"`
-	WriterGeneration uint64    `json:"writerGeneration"`
-	InheritedEvents  uint64    `json:"inheritedEventCount,omitempty"`
-	Source           *Source   `json:"source,omitempty"`
+	SchemaVersion    int         `json:"schemaVersion"`
+	Codec            string      `json:"codec"`
+	StorageRevision  int         `json:"storageRevision,omitempty"`
+	ContentRoot      string      `json:"contentRoot,omitempty"`
+	SessionID        string      `json:"sessionId"`
+	CreatedAt        time.Time   `json:"createdAt"`
+	WriterGeneration uint64      `json:"writerGeneration"`
+	InheritedEvents  uint64      `json:"inheritedEventCount,omitempty"`
+	Source           *Source     `json:"source,omitempty"`
+	Kind             SessionKind `json:"kind,omitempty"`
 }
 
 const sharedContentRoot = "../.content-v1"
@@ -305,10 +306,10 @@ func CreateStore(dir, sessionID string) (*Session, error) {
 }
 
 func CreateWithOptions(dir, sessionID string, opts OpenOptions) (*Session, error) {
-	return createWithOptions(dir, sessionID, opts, nil)
+	return createWithOptions(dir, sessionID, opts, nil, "")
 }
 
-func createWithOptions(dir, sessionID string, opts OpenOptions, header *SessionHeader) (*Session, error) {
+func createWithOptions(dir, sessionID string, opts OpenOptions, header *SessionHeader, kind SessionKind) (*Session, error) {
 	dir = filepath.Clean(strings.TrimSpace(dir))
 	sessionID = strings.TrimSpace(sessionID)
 	if dir == "." || sessionID == "" {
@@ -337,7 +338,7 @@ func createWithOptions(dir, sessionID string, opts OpenOptions, header *SessionH
 		header.SessionID = sessionID
 		header.CreatedAt = createdAt
 	}
-	manifest := Manifest{SchemaVersion: SchemaVersion, Codec: Codec, StorageRevision: StorageRevision, ContentRoot: sharedContentRoot, SessionID: sessionID, CreatedAt: createdAt}
+	manifest := Manifest{SchemaVersion: SchemaVersion, Codec: Codec, StorageRevision: StorageRevision, ContentRoot: sharedContentRoot, SessionID: sessionID, CreatedAt: createdAt, Kind: kind}
 	if err := writeManifestFile(filepath.Join(dir, "manifest.json"), manifest); err != nil {
 		return nil, err
 	}

@@ -714,7 +714,7 @@ func runAgent(args []string, version string) int {
 		flagTakeoverApproval(*takeover)); err != nil {
 		return cliTakeoverFailure(takeoverBinding, leases, takeoverManager, err)
 	}
-	ctrl.EnsureSessionPath()
+	ctrl.EnsureHeadlessRunSessionPath()
 	// Fresh sessions take the lease too (defensive: the path is brand new); a
 	// resumed path is already held, making this a no-op.
 	if err := rebindCLIControllerAuthority(leases, ctrl); err != nil {

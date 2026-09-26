@@ -159,7 +159,7 @@ func readListingMetadata(ctx context.Context, path string) ([]byte, error) {
 
 func (in sessionMetadataInput) info(id string) (SessionInfo, error) {
 	m := in.manifest
-	info := SessionInfo{SessionID: id, Codec: m.Codec, CreatedAt: m.CreatedAt, UpdatedAt: m.CreatedAt, MetadataStatus: MetadataPending, Path: in.dir}
+	info := SessionInfo{SessionID: id, Codec: m.Codec, Kind: m.Kind, CreatedAt: m.CreatedAt, UpdatedAt: m.CreatedAt, MetadataStatus: MetadataPending, Path: in.dir}
 	if in.revision.Exists && in.revision.ModTimeNS > info.UpdatedAt.UnixNano() {
 		info.UpdatedAt = time.Unix(0, in.revision.ModTimeNS)
 	}
