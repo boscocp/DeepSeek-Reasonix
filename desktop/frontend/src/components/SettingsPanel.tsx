@@ -6015,7 +6015,7 @@ export const ProviderEditorModelPicker = memo(function ProviderEditorModelPicker
                   disabled={disabled}
                   onChange={() => onToggleModel(model)}
                 />
-                <span>{model}</span>
+                <span title={model}>{model}</span>
               </label>
               <div className="provider-model-draft__capabilities" aria-label={t("settings.modelCapabilitiesAria", { model })}>
                 {capability === "supported" && <span>{t("settings.visionModel")}</span>}
