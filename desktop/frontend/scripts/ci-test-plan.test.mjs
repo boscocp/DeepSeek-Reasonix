@@ -29,7 +29,9 @@ test("asset loaders and the isolated performance benchmark retain their invocati
 });
 
 test("future tests are discovered without registration and unknown script grammars fail closed", () => {
-  assert.ok(testPlan(scripts, [...files, "new-behavior.test.tsx"]).some(entry => entry.key.endsWith("new-behavior.test.tsx")));
+  const discovered = testPlan(scripts, [...files, "new-behavior.test.tsx"]).find(entry => entry.key.endsWith("new-behavior.test.tsx"));
+  assert.ok(discovered);
+  assert.ok(discovered.args.includes("./scripts/svg-stub-register.mjs"));
   for (const body of ["pnpm test:motion", "echo passed", "node check.mjs || true", "node check.mjs; true"]) {
     assert.throws(() => testPlan({ ...scripts, "test:motion": body }, files));
   }
