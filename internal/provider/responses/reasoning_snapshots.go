@@ -14,7 +14,7 @@ func (s *responseReasoningSnapshots) capture(ev sseEvent) {
 		candidates = append(candidates, *ev.Item)
 	}
 	if ev.Type == "response.completed" && ev.Response != nil {
-		candidates = append(candidates, ev.Response.Output...)
+		candidates = append(candidates, outputItems(ev.Response)...)
 	}
 	for _, item := range candidates {
 		if provider.IsReplayableResponsesReasoning(item.Raw) {
