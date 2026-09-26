@@ -137,6 +137,7 @@ export function Onboarding({ port, setup, onDone }: Props) {
         noProxy: found.noProxy,
         effort: "",
         vision: found.vision,
+        replace: true,
       });
       await port.setModel(`${name}/${model}`);
       onDone();

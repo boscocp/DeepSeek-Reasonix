@@ -2,6 +2,7 @@
 package config
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"strings"
@@ -32,6 +33,33 @@ func APIKeyEnvFor(name string) string {
 		stem = "CUSTOM_" + stem
 	}
 	return stem + "_API_KEY"
+}
+
+// FreeAPIKeyEnvFor names the slot for a new provider among providers. Names
+// fold (case, punctuation), and a removed provider leaves its credential stored,
+// so the name's own slot is used only while no entry holds it and nothing is
+// stored there; otherwise the key gets a private slot of its own.
+func FreeAPIKeyEnvFor(name string, providers []ProviderEntry) (string, error) {
+	free := func(slot string) bool {
+		for i := range providers {
+			if strings.TrimSpace(providers[i].APIKeyEnv) == slot {
+				return false
+			}
+		}
+		return !CredentialStored(slot)
+	}
+	if own := APIKeyEnvFor(name); free(own) {
+		return own, nil
+	}
+	for {
+		var id [16]byte
+		if _, err := rand.Read(id[:]); err != nil {
+			return "", fmt.Errorf("allocate credential slot: %w", err)
+		}
+		if slot := fmt.Sprintf("REASONIX_CONNECTION_%X_KEY", id); free(slot) {
+			return slot, nil
+		}
+	}
 }
 
 func fnv1a32Hex(s string) string {

@@ -255,6 +255,7 @@ func (s *Server) saveProvider(w http.ResponseWriter, r *http.Request) {
 		ReasoningProtocol *string           `json:"reasoningProtocol"`
 		Headers           map[string]string `json:"headers"`
 		ExtraBody         map[string]any    `json:"extraBody"`
+		Replace           bool              `json:"replace"`
 	}
 	if !decodeProviderBody(w, r, &body) {
 		return
@@ -284,7 +285,22 @@ func (s *Server) saveProvider(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entry.ExtraBody = body.ExtraBody
-	entry.APIKeyEnv = keyEnvForNewSource(entry.Name, entry.BaseURL, body.APIKey)
+	known, err := config.Load()
+	if err != nil || known == nil {
+		refuse(w, http.StatusInternalServerError, "provider.config_unreadable", "the configuration could not be read, so no key slot can be chosen", nil)
+		return
+	}
+	// Adding writes a new account; only onboarding, filling in the entry a fresh
+	// install already names, replaces one, and it says so.
+	if _, taken := known.Provider(entry.Name); taken && !body.Replace {
+		refuse(w, http.StatusConflict, "provider.name_taken", "a provider with this name already exists", map[string]any{"name": entry.Name})
+		return
+	}
+	entry.APIKeyEnv, err = keyEnvForNewSource(known, entry.Name, entry.BaseURL, body.APIKey, body.Replace)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
 	if key := strings.TrimSpace(body.APIKey); key != "" {
 		if _, err := config.SetCredential(entry.APIKeyEnv, key); err != nil {
 			// The slot is derived from the name, so this is the person's to
