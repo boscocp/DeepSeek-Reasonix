@@ -129,6 +129,18 @@ for (const [name, text] of Object.entries(fixtures)) {
   ok(commentHtml.includes("code-block"), "non-empty comment code keeps its code-block surface");
 }
 
+// A lone tilde writes a range; two ranges on one line must not strike out the
+// text between them. Only ~~ strikes, on the live and the worker path alike.
+{
+  const text = "转速 500~1000 或 2000~3000 转，~~旧值~~";
+  const live = renderCurrent(text);
+  const worker = renderBlocks([{ key: "whole", children: parseMarkdownToHast(text).children }]);
+  for (const [path, html] of [["live", live], ["worker", worker]] as const) {
+    eq((html.match(/<del>/g) ?? []).length, 1, `${path}: only the doubled tilde strikes`);
+    ok(html.includes("500~1000 或 2000~3000"), `${path}: single-tilde ranges stay literal`);
+  }
+}
+
 // Block keys are stable top-level indexes.
 {
   const blocks = parseMarkdownToBlocks("one\n\ntwo\n\nthree");
