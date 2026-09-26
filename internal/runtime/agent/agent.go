@@ -238,10 +238,10 @@ type ToolHooks interface {
 	// streaming reasoning live when none is wired up.
 	PostLLMCall(ctx context.Context, reasoning string, turn int) string
 	HasPostLLMCall() bool
-	// SubagentStop fires when a `task` sub-agent finishes (foreground). PreCompact
-	// fires just before a compaction pass and returns extra summary guidance (its
-	// hooks' stdout) to fold into the summary prompt; "" when no hook contributes.
-	SubagentStop(ctx context.Context, last string)
+	// SubagentStart/Stop bracket a foreground `task`. PreCompact returns its hooks'
+	// stdout as summary guidance for the next compaction; "" when none contributes.
+	SubagentStart(ctx context.Context, callID string, args json.RawMessage)
+	SubagentStop(ctx context.Context, callID, last string, err error)
 	PreCompact(ctx context.Context, trigger string) string
 }
 

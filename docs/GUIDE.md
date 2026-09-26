@@ -614,6 +614,14 @@ and `PreCompact` fire in every agent a session runs. Each fires under a
 
 `/new` or a branch switch moves every child to the new id along with the parent.
 
+`SubagentStart` and `SubagentStop`:
+
+- bracket a foreground `task` call only; `read_only_task`, `parallel_tasks`,
+  `fleet`, skill children and background tasks fire neither;
+- carry the call's id as `callId`, so a consumer can pair them;
+- `SubagentStop` fires on every end: answer, failure, cancel or refusal;
+- neither can block: exit 2 only warns.
+
 ## Keyboard shortcuts
 
 Shortcuts are documented by client because users usually look for the keys that
