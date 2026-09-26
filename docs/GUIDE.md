@@ -1366,6 +1366,15 @@ hooks use the `[tools.shell]` from your user `config.toml`, never the checkout's
 `reasonix.toml`, because reviewing an untrusted branch must not execute commands
 or interpreters that branch configures.
 
+`reasonix review` usually runs inside a checkout you have not vetted, so its
+tools, skills and hooks come only from your own configuration. The review
+skill resolves from the built-in and your user-level skill directories, never
+the checkout's `.reasonix/skills` (or `.agents`, `.agent`, `.claude`). Search
+(`[tools.search]`) and the bash sandbox (`[sandbox]`) come from your user
+`config.toml`, never the checkout's `reasonix.toml`. The checkout's config still
+picks the provider when it sets `default_model`; pass `--model` to choose your
+own.
+
 In persisted sessions, `parallel_tasks` and `fleet` return a bounded preview
 plus one `Subagent reference` per completed child instead of concatenating every
 full answer into a truncation-prone tool result. The parent can call

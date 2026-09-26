@@ -1059,6 +1059,13 @@ checkout 中的 `.reasonix/settings.json`，其 hooks 使用的解释器也只�
 里的 `[tools.shell]`，从不取该 checkout 的 `reasonix.toml`，因为评审不受信任的分支时，
 不能执行该分支配置的命令或解释器。
 
+`reasonix review` 通常运行在你尚未审过的 checkout 里，因此它的工具、skills 与 hooks
+只取自你自己的配置。评审 skill 只从内置与用户级 skill 目录解析，从不读取该 checkout 的
+`.reasonix/skills`（以及 `.agents`、`.agent`、`.claude`）。搜索（`[tools.search]`）与 bash
+沙盒（`[sandbox]`）只取你用户级 `config.toml`，从不取该 checkout 的 `reasonix.toml`。
+该 checkout 的配置若设置了 `default_model`，仍会决定使用哪个 provider；传 `--model`
+可改用你自己的。
+
 在持久化会话中，`parallel_tasks` 与 `fleet` 不再把所有完整答案拼成一个容易被截断的
 工具结果，而是为每个已完成子 Agent 返回有界预览和独立的 `Subagent reference`。父 Agent
 可用 `read_subagent_result` 按 `offset_bytes` 分页读取该引用对应的完整答案；读取范围受当前
