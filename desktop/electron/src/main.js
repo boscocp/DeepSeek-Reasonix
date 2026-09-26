@@ -12,6 +12,7 @@ const { StudioHost } = require("./hostclient");
 const { installTray } = require("./tray");
 const { instanceID, profileFor } = require("./instance");
 const { installApplicationMenu, installContextMenu } = require("./menu");
+const { installFullScreenKey } = require("./fullscreen");
 const { externalTarget } = require("./links");
 const { reveal } = require("./reveal");
 const { appIcon } = require("./appicon");
@@ -98,6 +99,7 @@ async function boot() {
     if (cause) dialog.showErrorBox(cause.title, cause.detail);
   });
   installContextMenu(win.webContents, win);
+  installFullScreenKey(win.webContents, win);
   win.once("ready-to-show", () => win.show());
   // No icon, no backgrounding: the close button can only hide the window where
   // something is left that brings it back.
