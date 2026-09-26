@@ -11,8 +11,8 @@
         "zh": "Reasonix 1.39.1"
       },
       "summary": {
-        "en": "Stability and compatibility fixes for desktop and CLI, including session catalog repair, IME rename handling, and memory safety.",
-        "zh": "桌面端与 CLI 的稳定性及兼容性修复，包括会话目录修复、输入法重命名处理与记忆安全。"
+        "en": "Stability fixes for desktop and CLI: sessions missing after an update, the Windows window that never opened, older-session import, hooks everywhere tools run, and memory safety.",
+        "zh": "桌面端与 CLI 的稳定性修复：更新后会话「消失」、Windows 窗口打不开、旧会话导入、钩子覆盖所有工具调用处，以及记忆安全。"
       },
       "surfaces": [
         "desktop",
@@ -26,15 +26,52 @@
             "desktop"
           ],
           "title": {
-            "en": "Sessions missing from the list after an update are restored",
-            "zh": "更新后会话列表缺失或不完整的问题已修复"
+            "en": "Sessions missing after an update are back",
+            "zh": "更新后会话「消失」的问题已修复"
           },
           "body": {
-            "en": "After an upgrade some sessions, especially ones with branches, could vanish from the list or show only part of their history. Startup repair now rebuilds the session catalog, so an affected list recovers on its own; the conversations themselves were never deleted.",
-            "zh": "升级后部分会话（尤其是有分支的会话）会从列表中消失或只显示一部分。启动时的修复会重建会话目录，已受影响的列表会自动恢复，会话内容本身一直都在。"
+            "en": "After updating from 1.38 the sidebar could show no sessions at all, or open on a startup error when the last tab was a chat that was never sent. Both are fixed, and the session catalog repair rebuilds a list that lost sessions with branches. The conversations themselves were never deleted.",
+            "zh": "从 1.38 升级后，侧栏可能一条会话都不显示；如果上次停留在一个没发过消息的新对话上，还会一启动就报错。两者都已修复，会话目录的启动修复也会找回带分支会话的列表。会话内容本身一直都在。"
           },
           "refs": [
-            10763
+            10763,
+            10853
+          ]
+        },
+        {
+          "kind": "fixed",
+          "targets": [
+            "desktop"
+          ],
+          "title": {
+            "en": "The window opens again on Windows machines that ran the 1.38 sandbox",
+            "zh": "用过 1.38 沙箱的 Windows 电脑上窗口能正常打开了"
+          },
+          "body": {
+            "en": "The Windows sandbox in 1.38.8–1.38.10 could leave an access entry on the install folder that made every Chromium process crash, so the window never appeared. The desktop app now removes those entries from its own install folder at startup, and says so if Windows refuses.",
+            "zh": "1.38.8–1.38.10 的 Windows 沙箱可能在安装目录上留下一条访问权限，导致 Chromium 进程全部崩溃、窗口始终不出现。桌面端现在启动时会从自己的安装目录移除这类权限，被系统拒绝时会弹窗说明原因。"
+          },
+          "refs": [
+            10858,
+            10853
+          ]
+        },
+        {
+          "kind": "fixed",
+          "targets": [
+            "desktop"
+          ],
+          "title": {
+            "en": "Opening and importing older sessions keeps their original files",
+            "zh": "打开和导入旧会话不再改动原始文件"
+          },
+          "body": {
+            "en": "An older session opened from the sidebar no longer adds a second row named after its file, and importing it leaves the original files untouched instead of reporting that the source changed.",
+            "zh": "从侧栏打开旧会话不再多出一行以文件名命名的重复条目；导入时原始文件保持不变，也不会再误报「旧来源有更新」。"
+          },
+          "refs": [
+            10495,
+            10853
           ]
         },
         {
@@ -79,15 +116,17 @@
             "cli"
           ],
           "title": {
-            "en": "Tool hooks now run in subagents",
-            "zh": "工具钩子现已在子代理中运行"
+            "en": "Tool hooks run wherever tools run",
+            "zh": "工具钩子覆盖所有调用工具的地方"
           },
           "body": {
-            "en": "Project and global tool hooks apply to task, read_only_task, run_skill, and read_only_skill subagents.",
-            "zh": "项目和全局工具钩子适用于 task、read_only_task、run_skill 和 read_only_skill 子代理。"
+            "en": "Project and global tool hooks now also apply to subagents (task, read_only_task, run_skill, read_only_skill), the planner, reasonix review and the desktop try run, and a resumed skill keeps the same hook session id.",
+            "zh": "项目和全局工具钩子现在也作用于子代理（task、read_only_task、run_skill、read_only_skill）、规划器、reasonix review 和桌面端试运行；续跑的技能保持同一个钩子会话 ID。"
           },
           "refs": [
-            10843
+            10843,
+            10845,
+            10848
           ]
         }
       ],
@@ -208,6 +247,22 @@
             },
             "refs": [
               10770
+            ]
+          },
+          {
+            "targets": [
+              "desktop"
+            ],
+            "title": {
+              "en": "One-shot reasonix -p runs stay out of the sidebar",
+              "zh": "一次性的 reasonix -p 运行不再出现在侧栏"
+            },
+            "body": {
+              "en": "Headless runs, including ones an agent launches, no longer leave permanent sidebar rows named with a raw id.",
+              "zh": "无头运行（包括智能体自己启动的）不再在侧栏留下以原始 ID 命名的永久条目。"
+            },
+            "refs": [
+              10857
             ]
           }
         ]
