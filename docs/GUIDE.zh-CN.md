@@ -1125,13 +1125,20 @@ destructive MCP 目标、来自未授权 server 的 reader，以及一切会改�
 | `reasonix review`（CLI） | 只读评审 diff 或分支 |
 | 桌面端 preview/review 子代理 | 桌面端只读分析面 |
 
-`reasonix review` 只触发你在 Reasonix home 下配置的 hooks：全局 `settings.json` 与已安装插件。
+`reasonix review` 把被评审的 checkout 视为不可信输入，只运行你自己的配置：
 
-它从不运行被评审 checkout 里的项目 hooks（`<root>/.reasonix/settings.json`）。待评审的分支是不可信输入，否则其中声明的 hook 会带着你的环境与密钥执行。
+- 评审 skill 只取内置版本，或你放在 Reasonix home / 用户主目录 skill 目录下的版本。
+  项目 skill 目录一律不读，`<root>/.reasonix/skills/review` 无法替换它。
+- 工具与沙盒（包括 `[tools.search]` 的 `engine` 与 `rg_path`）只取自
+  `<Reasonix home>/config.toml`，从不取自 checkout 的 `reasonix.toml`。
+- hooks 只运行你在 Reasonix home 下配置的：全局 `settings.json` 与已安装插件。
+  checkout 里的项目 hooks（`<root>/.reasonix/settings.json`）从不运行，
+  这些 hooks 使用的解释器只取自你自己的 `[tools.shell]`。
+- 评审 hooks 以 checkout 根目录为工作目录，便于检查代码，但像 `python` 这样的裸命令名
+  绝不会解析到 checkout 自带的可执行文件：hook 进程带有
+  `NoDefaultCurrentDirectoryInExePath=1`，Windows 上的 `cmd.exe` 因此不会优先搜索当前目录。
 
-这些 hooks 使用的解释器只取自你用户配置中的 `[tools.shell]`，被评审 checkout 的 `reasonix.toml` 无法指定。
-
-评审 hooks 以 checkout 根目录为工作目录，便于检查代码，但像 `python` 这样的裸命令名绝不会解析到 checkout 自带的可执行文件：hook 进程带有 `NoDefaultCurrentDirectoryInExePath=1`，Windows 上的 `cmd.exe` 因此不会优先搜索当前目录。
+模型与 provider 仍按合并后的配置解析，与普通会话相同。
 
 在持久化会话中，`parallel_tasks` 与 `fleet` 不再把所有完整答案拼成一个容易被截断的
 工具结果，而是为每个已完成子 Agent 返回有界预览和独立的 `Subagent reference`。父 Agent
