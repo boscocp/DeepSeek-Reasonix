@@ -39,6 +39,7 @@ let rows: Record<string, ProjectNode[]> = {};
 let groups: SessionGroup[] = [];
 let calls: ProjectTopicPageRequest[] = [];
 const removedWorkspaces: string[] = [];
+const renamedSessions: string[] = [];
 let intercept: ((req: ProjectTopicPageRequest) => Promise<ProjectTopicPage> | undefined) | undefined;
 let snapshotFailure: Error | null = null;
 const catalog = () => ({ state: "ready", revision, indexed: 2, total: 2, repairPending: 0 });
@@ -67,6 +68,7 @@ const bindings = {
   GetProjectTreeRuntimeSnapshot: async () => ({ revision: 0, topics: [] }),
   IsolatedWorktreeAvailability: async () => ({ available: true, reason: "" }),
   RemoveWorkspace: async (path: string) => { removedWorkspaces.push(path); },
+  RenameSessionTarget: async (_target: unknown, title: string) => { renamedSessions.push(title); },
   Platform: async () => "darwin",
   RemoteConnectionStatuses: async () => [],
 };
@@ -133,6 +135,27 @@ function deferred<T>() {
 
 mock.timers.enable({ apis: ["setTimeout", "Date"] });
 try {
+  await mount(false, true);
+  await act(async () => container.querySelector(".project-tree__topic-main")!.dispatchEvent(new dom.window.MouseEvent("contextmenu", { bubbles: true, clientX: 30, clientY: 30 })));
+  await flush();
+  const renameSession = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find(button => button.textContent?.includes("Rename session"));
+  assert.ok(renameSession, "session context menu offers Rename session");
+  await act(async () => renameSession.click()); await flush();
+  const renameInput = container.querySelector<HTMLInputElement>(".project-tree__topic-input");
+  assert.ok(renameInput, "session rename opens the inline input");
+  const composingEnter = new dom.window.KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true });
+  const safariEnter = new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true });
+  Object.defineProperty(safariEnter, "keyCode", { value: 229 });
+  await act(async () => { renameInput.dispatchEvent(composingEnter); renameInput.dispatchEvent(safariEnter); });
+  assert.equal(container.querySelector(".project-tree__topic-input"), renameInput, "IME Enter keeps the session rename editor open");
+  assert.deepEqual(renamedSessions, [], "IME Enter does not persist a partial session name");
+  await act(async () => renameInput.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  await flush();
+  assert.equal(container.querySelector(".project-tree__topic-input"), null, "ordinary Enter finishes session rename");
+  assert.equal(renamedSessions.length, 1, "ordinary Enter persists the session name once");
+  await unmount();
+  console.log("  PASS  session rename ignores IME Enter and accepts ordinary Enter");
+
   await mount(true);
   const coldPage = deferred<ProjectTopicPage>();
   intercept = req => req.workspaceRoot === roots[1] ? coldPage.promise.then(() => page(req)) : undefined;

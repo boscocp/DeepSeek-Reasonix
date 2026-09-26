@@ -1299,6 +1299,7 @@ export function ProjectTree({
               onChange={(event) => setTopicDraft(event.target.value)}
               onFocus={(event) => event.target.select()}
               onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
                 if (event.key === "Enter") void (isSessionNode ? commitRenameSession() : commitRenameTopic(node));
                 if (event.key === "Escape") {
                   setEditingTopic(null);
