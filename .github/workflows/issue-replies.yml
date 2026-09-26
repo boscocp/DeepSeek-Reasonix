@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       replies:
-        description: 'JSON array of {"issue": 123, "body": "...", "close": true}'
+        description: 'JSON array of {"issue": 123, "body": "...", "close": true | "not_planned"}'
         required: true
         type: string
 
@@ -59,13 +59,13 @@ jobs:
                     }
                   }
                 }
-                if (close === true) {
+                if (close === true || close === 'not_planned') {
                   const { data } = await github.rest.issues.get({ owner, repo, issue_number: issue });
                   if (data.state === 'open') {
-                    await github.rest.issues.update({ owner, repo, issue_number: issue, state: 'closed', state_reason: 'completed' });
+                    await github.rest.issues.update({ owner, repo, issue_number: issue, state: 'closed', state_reason: close === 'not_planned' ? 'not_planned' : 'completed' });
                   }
                 }
-                core.info(`#${issue}: ${posted ? 'already replied' : 'replied'}${close === true ? ', closed' : ''}`);
+                core.info(`#${issue}: ${posted ? 'already replied' : 'replied'}${close ? ', closed' : ''}`);
               } catch (error) {
                 failed.push(`${issue}: ${error.message}`);
               }
