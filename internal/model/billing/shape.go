@@ -16,6 +16,7 @@ var walletShapes = map[string]func(host string, body []byte) (*Balance, error){
 	"api.deepseek.com": decodeDeepSeek,
 	"api.moonshot.cn":  decodeMoonshot,
 	"api.moonshot.ai":  decodeMoonshot,
+	"openrouter.ai":    decodeOpenRouter,
 }
 
 // decodeWallet picks the decoder for endpoint and applies it. An address no
@@ -97,6 +98,30 @@ func decodeMoonshot(host string, body []byte) (*Balance, error) {
 			GrantedBalance:  amount(mr.Data.VoucherBalance),
 			ToppedUpBalance: amount(mr.Data.CashBalance),
 		}},
+	}, nil
+}
+
+// openRouterResp mirrors GET /api/v1/credits: lifetime purchases and lifetime
+// spend in USD, with the remaining wallet left to the reader to subtract.
+type openRouterResp struct {
+	Data *struct {
+		TotalCredits *float64 `json:"total_credits"`
+		TotalUsage   *float64 `json:"total_usage"`
+	} `json:"data"`
+}
+
+func decodeOpenRouter(_ string, body []byte) (*Balance, error) {
+	var or openRouterResp
+	if err := json.Unmarshal(body, &or); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrUnreadable, err)
+	}
+	if or.Data == nil || or.Data.TotalCredits == nil || or.Data.TotalUsage == nil {
+		return nil, ErrUnreadable
+	}
+	remaining := *or.Data.TotalCredits - *or.Data.TotalUsage
+	return &Balance{
+		Available: remaining > 0,
+		Infos:     []Info{{Currency: "USD", TotalBalance: amount(remaining)}},
 	}, nil
 }
 
