@@ -3640,12 +3640,13 @@
     font: var(--w-med) var(--fs-meta) var(--ui); text-decoration: underline; text-underline-offset: 3px;
   }
 
-  .rc { margin: 4px 0 2px; padding-left: calc(var(--call-sym) + var(--call-gap)) }
+  .rc { margin: 4px 0 2px; max-width: var(--doc) }
   .rc-ok {
     display: flex; flex-direction: row; align-items: baseline; gap: 8px;
     font: var(--w-reg) var(--fs-ui)/1.6 var(--ui); color: var(--ghost);
   }
-  .rc-ok .rc-tick { color: var(--ok) }
+  .rc-ok .rc-tick { flex: none; color: var(--ok) }
+  .rc-ok .rc-t { flex: none }
   .rc-ok .rc-src { min-width: 0; font: var(--w-reg) var(--fs-meta) var(--mono); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
   .rc-hd { padding: 8px 0 2px; font: var(--w-reg) var(--fs-meta) var(--ui); color: var(--ghost) }
   .rc-more { padding: var(--y-close) 0 0 12px; font: var(--w-reg) var(--fs-meta) var(--ui); color: var(--ghost) }
