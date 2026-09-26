@@ -77,3 +77,38 @@ func TestFetchStatusCarriesIdentity(t *testing.T) {
 		}
 	}
 }
+
+// OpenRouter's credits endpoint reports what was bought and what was spent;
+// the wallet is the difference, and it is always USD.
+func TestOpenRouterCreditsDecode(t *testing.T) {
+	b, err := decodeWallet("https://openrouter.ai/api/v1/credits", []byte(`{"data":{"total_credits":10,"total_usage":0.25}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !b.Available {
+		t.Error("a funded wallet read back as unusable")
+	}
+	if got := b.Display(); got != "$9.75" {
+		t.Errorf("Display = %q, want $9.75", got)
+	}
+	if got := b.PrimaryCurrency(); got != "USD" {
+		t.Errorf("PrimaryCurrency = %q, want USD", got)
+	}
+}
+
+func TestOpenRouterSpentWalletIsUnavailable(t *testing.T) {
+	b, err := decodeWallet("https://openrouter.ai/api/v1/credits", []byte(`{"data":{"total_credits":5,"total_usage":5}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Available {
+		t.Error("a spent wallet read back as usable")
+	}
+}
+
+func TestOpenRouterWithoutDataIsUnreadable(t *testing.T) {
+	_, err := decodeWallet("https://openrouter.ai/api/v1/credits", []byte(`{"error":{"code":401}}`))
+	if !errors.Is(err, ErrUnreadable) {
+		t.Fatalf("err = %v, want ErrUnreadable", err)
+	}
+}
