@@ -40,6 +40,7 @@ func NewTaskToolWithOptions(opts TaskToolOptions) *TaskTool {
 		resolveProvider:  opts.ResolveProvider,
 		maxSubagentDepth: DefaultMaxSubagentDepth,
 		imageResolver:    opts.ImageRequestResolver,
+		hooksForSession:  opts.HooksForSession,
 	}
 }
 
@@ -74,6 +75,9 @@ func (t *TaskTool) subagentOptions(ctx context.Context, maxSteps int, pricing *p
 		WriteWorkspaceRoot:       t.workspaceRoot,
 		ImageRequestResolver:     t.imageResolver,
 	}
+	if t.hooksForSession != nil {
+		opts.Hooks = t.hooksForSession(recoveryTaskID)
+	}
 	// Writer children inherit the parent turn's frozen risk and closure floors.
 	// The parent publishes its policy into the run context; a child that never
 	// received it (direct unit construction) keeps its own derived policy.
@@ -100,6 +104,7 @@ func (t *TaskTool) WithImageRequestResolver(resolver ImageRequestResolver) *Task
 type TaskToolOptions struct {
 	ImageInput                            *imageinput.Config
 	ImageRequestResolver                  ImageRequestResolver
+	HooksForSession                       func(string) ToolHooks
 	Provider                              provider.Provider
 	Pricing                               *provider.Pricing
 	QuoteContext                          *event.QuoteContext

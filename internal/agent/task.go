@@ -290,6 +290,7 @@ type TaskTool struct {
 	mutationObserver *checkpoint.MutationObserver
 	writeRoots       *sandbox.WritableRootSet
 	imageResolver    ImageRequestResolver
+	hooksForSession  func(string) ToolHooks
 	// capabilityRuntime is the session-shared MCP Host/specs substrate. Each
 	// sub-agent gets its own use_capability frontend so ledger state stays
 	// isolated while connections reuse the parent Host.

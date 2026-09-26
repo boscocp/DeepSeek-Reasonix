@@ -1013,14 +1013,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	} else {
 		resolvedHooks = hook.Load(hook.LoadOptions{ProjectRoot: root})
 	}
-	hookRuntime := hook.RuntimeOptions{}
-	if shell.Kind == sandbox.ShellBash {
-		hookRuntime.BashPath = shell.Path
-	}
-	hookRunner := hook.NewRunner(
-		resolvedHooks, root, hook.NewDefaultSpawner(hookRuntime),
-		func(msg string) { sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: msg}) },
-	)
+	hookRunner := newBootHookRunner(resolvedHooks, root, shell, sink)
 	// The `task` tool spawns sub-agents that reuse the parent's provider and
 	// tool registry. Wired here after the built-ins / plugins are loaded so
 	// sub-agents inherit the full tool set (minus `task` itself, to keep
@@ -1145,6 +1138,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			Provider:            execProv,
 			Pricing:             entry.Price,
 			QuoteContext:        quoteCtx,
+			HooksForSession:     func(id string) agent.ToolHooks { return hookRunner.ForSession(id) },
 			ParentRegistry:      reg,
 			MaxSteps:            maxSteps,
 			ContextWindow:       entry.ContextWindow,
@@ -1276,7 +1270,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// read_only_task, so they cannot write, install, mutate memory, resume/fork
 	// transcripts, or delegate further.
 	//
-	subagentSkillOptions := newSubagentSkillOptionsFactory(cfg.Agent, quoteCtx, headlessGate, keepPolicy, maxSubagentDepth, opts.Ablation, workspaceLease, writeRootSet, childImageRouting{ctrlRef.Load, imageConfig})
+	subagentSkillOptions := newSubagentSkillOptionsFactory(cfg.Agent, quoteCtx, headlessGate, keepPolicy, maxSubagentDepth, opts.Ablation, workspaceLease, writeRootSet, hookRunner, childImageRouting{ctrlRef.Load, imageConfig})
 	readOnlySkillRunner := func(sctx context.Context, sk skill.Skill, task string, runOpts skill.SubagentRunOptions) (string, error) {
 		if strings.TrimSpace(runOpts.ContinueFrom) != "" || strings.TrimSpace(runOpts.ForkFrom) != "" {
 			return "", fmt.Errorf("read_only_skill does not support continue_from/fork_from")

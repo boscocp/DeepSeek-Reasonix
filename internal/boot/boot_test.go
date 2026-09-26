@@ -1009,6 +1009,76 @@ model = "x"
 	}
 }
 
+func TestBuildRunsPreToolUseInsideTaskSubagent(t *testing.T) {
+	for _, delegationTool := range []string{"task", "read_only_task", "run_skill", "read_only_skill"} {
+		t.Run(delegationTool, func(t *testing.T) {
+			isolateConfigHome(t)
+			dir := robustTempDir(t)
+			t.Chdir(dir)
+			registerHeadlessTaskTestProvider()
+			prov := &headlessTaskTestProvider{hookProbe: true, delegationTool: delegationTool}
+			setHeadlessTaskTestProvider(t, prov)
+			writeFile(t, dir, "reasonix.toml", `
+default_model = "test-model"
+
+[[providers]]
+name = "test-model"
+kind = "boot-headless-test"
+model = "x"
+`)
+			writeFile(t, dir, "marker.txt", "dummy hook probe")
+			if delegationTool == "run_skill" || delegationTool == "read_only_skill" {
+				writeFile(t, dir, ".reasonix/skills/hook-probe.md", "---\ndescription: inspect a marker\nrunAs: subagent\nallowed-tools: read_file\n---\nRead the requested file.")
+			}
+			logPath := filepath.Join(dir, "hook.log")
+			script := filepath.Join(dir, "deny-read.sh")
+			writeFile(t, dir, "deny-read.sh", "#!/bin/sh\ncat >> "+shellQuoteForTest(logPath)+"\nexit 2\n")
+			if err := os.Chmod(script, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			settings, err := json.Marshal(map[string]any{"hooks": map[string]any{"PreToolUse": []any{map[string]string{"match": "read_file", "command": script}}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, dir, ".reasonix/settings.json", string(settings))
+
+			ctrl, err := Build(context.Background(), withTestSession(t, Options{Sink: event.Discard}))
+			if err != nil {
+				t.Fatalf("Build: %v", err)
+			}
+			defer ctrl.Close()
+			if err := ctrl.Run(context.Background(), "read marker.txt, then delegate reading it to a task subagent"); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			log, err := os.ReadFile(logPath)
+			if err != nil {
+				t.Fatalf("read hook log: %v", err)
+			}
+			lines := strings.Split(strings.TrimSpace(string(log)), "\n")
+			if len(lines) != 2 {
+				t.Fatalf("PreToolUse calls = %d, want parent and subagent read_file calls; log=%q", len(lines), log)
+			}
+			var sessions [2]string
+			for i, line := range lines {
+				var payload struct{ ToolName, SessionID string }
+				if err := json.Unmarshal([]byte(line), &payload); err != nil {
+					t.Fatalf("decode hook payload: %v", err)
+				}
+				if payload.ToolName != "read_file" || payload.SessionID == "" {
+					t.Fatalf("hook payload = %+v, want read_file and session ID", payload)
+				}
+				sessions[i] = payload.SessionID
+			}
+			if sessions[0] == sessions[1] {
+				t.Fatalf("parent and child hook payloads share session ID %q", sessions[0])
+			}
+			if !prov.childReadBlocked {
+				t.Fatal("subagent's read_file tool result was not blocked by PreToolUse")
+			}
+		})
+	}
+}
+
 const headlessTaskTestProviderKind = "boot-headless-test"
 
 var (
@@ -1045,8 +1115,11 @@ func setHeadlessTaskTestProvider(t *testing.T, p *headlessTaskTestProvider) {
 }
 
 type headlessTaskTestProvider struct {
-	mu    sync.Mutex
-	calls int
+	mu               sync.Mutex
+	calls            int
+	hookProbe        bool
+	delegationTool   string
+	childReadBlocked bool
 }
 
 func (p *headlessTaskTestProvider) Name() string { return "boot-headless-test" }
@@ -1058,6 +1131,35 @@ func (p *headlessTaskTestProvider) Stream(_ context.Context, req provider.Reques
 	p.mu.Unlock()
 
 	var chunks []provider.Chunk
+	if p.hookProbe {
+		switch call {
+		case 0:
+			chunks = []provider.Chunk{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "parent-read", Name: "read_file", Arguments: `{"path":"marker.txt"}`}}}
+		case 1:
+			args := `{"prompt":"read marker.txt"}`
+			if p.delegationTool == "run_skill" || p.delegationTool == "read_only_skill" {
+				args = `{"name":"hook-probe","arguments":"read marker.txt"}`
+			}
+			chunks = []provider.Chunk{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "task-1", Name: p.delegationTool, Arguments: args}}}
+		case 2:
+			chunks = []provider.Chunk{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "child-read", Name: "read_file", Arguments: `{"path":"marker.txt"}`}}}
+		case 3:
+			for _, msg := range req.Messages {
+				if msg.Role == provider.RoleTool && msg.Name == "read_file" && strings.Contains(msg.Content, "blocked:") {
+					p.childReadBlocked = true
+				}
+			}
+			chunks = []provider.Chunk{{Type: provider.ChunkText, Text: "child done"}, {Type: provider.ChunkDone}}
+		default:
+			chunks = []provider.Chunk{{Type: provider.ChunkText, Text: "parent done"}, {Type: provider.ChunkDone}}
+		}
+		ch := make(chan provider.Chunk, len(chunks))
+		for _, chunk := range chunks {
+			ch <- chunk
+		}
+		close(ch)
+		return ch, nil
+	}
 	switch call {
 	case 0:
 		chunks = []provider.Chunk{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "task-1", Name: "task", Arguments: `{"prompt":"find callers"}`}}}
