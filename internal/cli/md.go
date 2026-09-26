@@ -323,8 +323,13 @@ func (r *mdRenderer) renderFenced(buf *strings.Builder, n ast.Node, src []byte, 
 
 func (r *mdRenderer) renderBlockquote(buf *strings.Builder, n *ast.Blockquote, src []byte, indent int) {
 	var inner strings.Builder
-	r.renderBlocks(&inner, n, src, 0)
 	prefix := strings.Repeat(" ", indent) + dim("▎ ")
+	// The quote's body is laid out at column 0 and shifted right by the rail
+	// afterwards, so it has to be wrapped to what is left beside the rail.
+	outer := r.width
+	r.width = max(outer-visibleWidth(prefix), 8)
+	r.renderBlocks(&inner, n, src, 0)
+	r.width = outer
 	if r.copyMode {
 		prefix = copyOmitSpan(prefix)
 	}
