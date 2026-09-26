@@ -574,3 +574,49 @@ test("only the Studio window reads or writes the preferences", () => {
   assert.deepEqual(loadPrefs(file), { "rx-theme": "light" });
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+function elf64(interpreter) {
+  const phoff = 64, phentsize = 56, phnum = interpreter ? 2 : 1;
+  const dataOffset = phoff + phnum * phentsize;
+  const path = Buffer.from(interpreter ? `${interpreter}\0` : "", "latin1");
+  const bytes = Buffer.alloc(dataOffset + path.length);
+  bytes.writeUInt32BE(0x7f454c46, 0);
+  bytes[4] = 2;
+  bytes[5] = 1;
+  bytes[6] = 1;
+  bytes.writeUInt16LE(2, 16);
+  bytes.writeUInt16LE(62, 18);
+  bytes.writeBigUInt64LE(BigInt(phoff), 32);
+  bytes.writeUInt16LE(64, 52);
+  bytes.writeUInt16LE(phentsize, 54);
+  bytes.writeUInt16LE(phnum, 56);
+  bytes.writeUInt32LE(1, phoff);
+  if (interpreter) {
+    const header = phoff + phentsize;
+    bytes.writeUInt32LE(3, header);
+    bytes.writeBigUInt64LE(BigInt(dataOffset), header + 8);
+    bytes.writeBigUInt64LE(BigInt(path.length), header + 32);
+    path.copy(bytes, dataOffset);
+  }
+  return bytes;
+}
+
+test("a Linux Go binary that needs the build host's dynamic loader is refused", () => {
+  const { elfInterpreter, dynamicallyLinked } = require("../packaging/elf.js");
+  assert.equal(elfInterpreter(elf64("/lib64/ld-linux-x86-64.so.2")), "/lib64/ld-linux-x86-64.so.2");
+  assert.equal(elfInterpreter(elf64(null)), null);
+  assert.throws(() => elfInterpreter(Buffer.from("#!/bin/sh\n")), /not an ELF/);
+  assert.throws(() => elfInterpreter(elf64("/lib/ld.so").subarray(0, 100)), /truncated/);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "reasonix-elf-"));
+  try {
+    const host = path.join(dir, "reasonix-studio-host");
+    const helper = path.join(dir, "reasonix-studio-update-helper");
+    fs.writeFileSync(host, elf64("/lib64/ld-linux-x86-64.so.2"));
+    fs.writeFileSync(helper, elf64(null));
+    assert.deepEqual(dynamicallyLinked([host, helper]), [{ file: host, interpreter: "/lib64/ld-linux-x86-64.so.2" }]);
+    assert.deepEqual(dynamicallyLinked([helper]), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -90,7 +90,8 @@ function buildWindowsHelper() {
 
 if (process.platform !== "darwin") {
   // go build names the binary after the package and adds .exe where it belongs.
-  go(["build", "-ldflags", LDFLAGS, "-o", OUT + path.sep, PKG]);
+  // Without cgo, because with it the Linux kernel inherits the runner's glibc.
+  go(["build", "-ldflags", LDFLAGS, "-o", OUT + path.sep, PKG], { CGO_ENABLED: "0" });
   console.log("built reasonix-studio-host");
   if (process.platform === "win32") buildWindowsHelper();
   process.exit(0);

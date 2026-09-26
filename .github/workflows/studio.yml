@@ -264,6 +264,17 @@ jobs:
             exit 1
           fi
 
+      # The Electron shell sets the package's glibc floor; a Go binary linked
+      # with cgo would raise it to the runner's own.
+      - name: The .deb's Go binaries are statically linked
+        if: runner.os == 'Linux'
+        run: |
+          deb=$(ls dist/ReasonixStudio-linux-*.deb)
+          dpkg-deb -x "$deb" "$RUNNER_TEMP/deb"
+          host=$(find "$RUNNER_TEMP/deb" -type f -path '*/resources/bin/reasonix-studio-host')
+          test -n "$host"
+          node desktop/electron/packaging/elf.js "$host" "$RUNNER_TEMP/deb/usr/lib/reasonix-studio/reasonix-studio-update-helper"
+
       # Recorded, not asserted: the real bundle layout, so later work argues
       # from what electron-builder produced rather than from its documentation.
       - name: Record the macOS bundle layout
