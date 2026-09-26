@@ -19,8 +19,6 @@ import (
 
 type stubProvider struct{}
 
-const autosaveTestTimeout = 10 * time.Second
-
 func (stubProvider) Name() string { return "stub" }
 
 func (stubProvider) Stream(_ context.Context, _ provider.Request) (<-chan provider.Chunk, error) {
@@ -42,34 +40,52 @@ func controllerWithContent(t *testing.T, path string) *control.Controller {
 
 func waitForFile(t *testing.T, path, want string) {
 	t.Helper()
-	deadline := time.Now().Add(autosaveTestTimeout)
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if b, err := os.ReadFile(path); err == nil && strings.Contains(string(b), want) {
 			return
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatalf("session file %q never contained %q", path, want)
+	t.Fatalf("file %q never contained %q", path, want)
 }
 
+// autosaveDeadlineMargin leaves room to report a stuck loop and run cleanups
+// before the test binary's own timeout panics.
+const autosaveDeadlineMargin = 5 * time.Second
+
+// waitForAutosaveIdle waits for the loop to finish, which the bounded save
+// waits and retries guarantee. It sets no bound of its own: those waits alone
+// can outlast any fixed one on a slow disk, so only the binary deadline caps it.
 func waitForAutosaveIdle(t *testing.T, tab *WorkspaceTab) {
 	t.Helper()
-	waitForAutosaveIdleWithin(t, tab, autosaveTestTimeout)
-}
-
-func waitForAutosaveIdleWithin(t *testing.T, tab *WorkspaceTab, timeout time.Duration) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	deadline, bounded := t.Deadline()
+	for {
 		tab.saveMu.Lock()
 		idle := !tab.saving && !tab.saveAgain
 		tab.saveMu.Unlock()
 		if idle {
 			return
 		}
+		if bounded && time.Until(deadline) < autosaveDeadlineMargin {
+			t.Fatal("autosave loop still running at the test binary deadline")
+		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatal("autosave loop did not become idle")
+}
+
+// requireAutosaved waits for the loop the caller started, then checks what it
+// left on disk; polling the file instead would put a clock on the disk.
+func requireAutosaved(t *testing.T, tab *WorkspaceTab, path, want string) {
+	t.Helper()
+	waitForAutosaveIdle(t, tab)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read session file after autosave: %v", err)
+	}
+	if !strings.Contains(string(b), want) {
+		t.Fatalf("session file %q does not contain %q after autosave went idle", path, want)
+	}
 }
 
 func appWithTab(t *testing.T, path string) (*App, *WorkspaceTab) {
@@ -102,8 +118,7 @@ func TestTurnDonePersistsSession(t *testing.T) {
 
 	tab.sink.Emit(event.Event{Kind: event.TurnDone})
 
-	waitForFile(t, path, "remember this turn")
-	waitForAutosaveIdle(t, tab)
+	requireAutosaved(t, tab, path, "remember this turn")
 }
 
 // TestNonTurnDoneDoesNotPersist confirms only TurnDone triggers a save, so the
@@ -136,8 +151,7 @@ func TestScheduleSnapshotCoalesces(t *testing.T) {
 	}
 	wg.Wait()
 
-	waitForFile(t, path, "acknowledged")
-	waitForAutosaveIdle(t, tab)
+	requireAutosaved(t, tab, path, "acknowledged")
 }
 
 func TestAutosaveFailureRetriesAndRecoversOnNextTurnDone(t *testing.T) {
@@ -152,7 +166,7 @@ func TestAutosaveFailureRetriesAndRecoversOnNextTurnDone(t *testing.T) {
 	tab.Ctrl = &snapshotErrorSessionController{SessionAPI: ctrl, err: os.ErrPermission}
 
 	tab.sink.Emit(event.Event{Kind: event.TurnDone})
-	waitForAutosaveIdleWithin(t, tab, 5*time.Second)
+	waitForAutosaveIdle(t, tab)
 
 	tab.saveMu.Lock()
 	failures := tab.saveFailures
@@ -171,8 +185,7 @@ func TestAutosaveFailureRetriesAndRecoversOnNextTurnDone(t *testing.T) {
 	tab.Ctrl = ctrl
 	a.mu.Unlock()
 	tab.sink.Emit(event.Event{Kind: event.TurnDone})
-	waitForFile(t, path, "remember this turn")
-	waitForAutosaveIdle(t, tab)
+	requireAutosaved(t, tab, path, "remember this turn")
 
 	tab.saveMu.Lock()
 	failures = tab.saveFailures
@@ -494,8 +507,7 @@ func TestCloseTabNoResurrectionFromAutosave(t *testing.T) {
 	// Write the session file once via the autosave loop, then wait for idle so
 	// the next TurnDone reliably kicks off a fresh loop.
 	doomedTab.sink.Emit(event.Event{Kind: event.TurnDone})
-	waitForFile(t, path, "acknowledged")
-	waitForAutosaveIdle(t, doomedTab)
+	requireAutosaved(t, doomedTab, path, "acknowledged")
 
 	// Kick the autosave loop and close the tab in close succession. The loop
 	// will be in flight when CloseTab runs — exactly the #4384 window.
@@ -573,8 +585,7 @@ func TestCloseTabSurvivorKeepsAutosave(t *testing.T) {
 	a.activeTabID = "test_tab"
 
 	survivor.sink.Emit(event.Event{Kind: event.TurnDone})
-	waitForFile(t, survivorPath, "acknowledged")
-	waitForAutosaveIdle(t, survivor)
+	requireAutosaved(t, survivor, survivorPath, "acknowledged")
 
 	if err := a.CloseTab("test_tab"); err != nil {
 		t.Fatalf("CloseTab: %v", err)
