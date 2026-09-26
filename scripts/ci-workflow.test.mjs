@@ -395,12 +395,22 @@ test("Certum signing preserves native builds and gates publication and attestati
   assert.match(signer, /runs-on: windows-2022/);
   assert.match(signer, /ref: \$\{\{ github.workflow_sha \}\}/);
   assert.equal(signer.match(/setup-certum/g)?.length, 1, "both architectures share one Certum session");
-  assert.match(signer, /Finalize amd64 in the shared Certum session/);
-  assert.match(signer, /Finalize arm64 in the shared Certum session/);
-  assert.equal(signer.match(/finalize-windows-signed-candidate\.sh/g)?.length, 2);
-  assert.ok(signer.indexOf("Finalize amd64 in the shared Certum session")
+  // Certum work stays in the one session; only the credential-free packaging
+  // of the two architectures runs at the same time, between the two.
+  const phases = [
+    "Sign both payloads in the shared Certum session",
+    "Package both architectures in parallel",
+    "Seal amd64 in the shared Certum session",
+    "Seal arm64 in the shared Certum session",
+  ].map((name) => signer.indexOf(`name: ${name}`));
+  assert.ok(phases.every((index) => index >= 0), "windows-sign names its sign, package and seal phases");
+  assert.deepEqual([...phases].sort((a, b) => a - b), phases, "sign, package, then seal each architecture");
+  for (const phase of ["sign", "package", "seal"]) {
+    assert.match(signer, new RegExp(`FINALIZE_PHASE=${phase} bash `));
+  }
+  assert.ok(signer.indexOf("Seal amd64 in the shared Certum session")
     < signer.indexOf("name: ${{ needs.resolve.outputs.artifact_prefix }}-windows-amd64"));
-  assert.ok(signer.indexOf("Finalize arm64 in the shared Certum session")
+  assert.ok(signer.indexOf("Seal arm64 in the shared Certum session")
     < signer.indexOf("name: ${{ needs.resolve.outputs.artifact_prefix }}-windows-arm64"));
   assert.ok(!release.includes("secrets.SIGNPATH_API_TOKEN"));
   const runtimeAcceptance = job(release, "windows-runtime-acceptance");
