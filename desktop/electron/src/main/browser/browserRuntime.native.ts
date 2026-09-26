@@ -64,6 +64,24 @@ view.page.debugger.sendCommand = async (method, params, sessionId) => {
   if (method === "Target.attachToTarget") targetAttachments++;
   return originalSend(method, params, sessionId);
 };
+// page_not_ready is refused before dispatch and asks the caller to observe
+// again: a frame load or zoom change is not a rendered-frame boundary.
+let inputRefusals = 0;
+const clickObserved = async <T extends { point: { x: number; y: number } }>(observe: (attempt: number) => Promise<T>): Promise<T> => {
+  const deadline = Date.now() + 5000;
+  for (let attempt = 0; ; attempt++) {
+    const observed = await observe(attempt);
+    try { await view.sendMouseInput!({ type: "mouseMove", ...observed.point }); }
+    catch (error) {
+      if ((error as { data?: { kind?: unknown } } | null)?.data?.kind !== "page_not_ready" || Date.now() >= deadline) throw error;
+      inputRefusals++;
+      continue;
+    }
+    await view.sendMouseInput!({ type: "mouseDown", button: "left", clickCount: 1, ...observed.point });
+    await view.sendMouseInput!({ type: "mouseUp", button: "left", clickCount: 1, ...observed.point });
+    return observed;
+  }
+};
 try {
   view.setBounds({ x: 0, y: 0, width: 800, height: 600 });
   view.setVisible(!background);
@@ -78,21 +96,28 @@ try {
   await view.page.mainFrame.executeJavaScript(`Promise.all(["http://127.0.0.1:${address.port}/child", "http://localhost:${address.port}/child"].map(url => new Promise(resolve => { const frame = document.createElement("iframe"); frame.onload = resolve; frame.src = url; document.body.append(frame); }))).then(() => true)`);
   const frameLease = await view.prepareCapture!(new AbortController().signal);
   const frameDocuments = new DocumentRegistry();
-  const frames = await takeSnapshot(view.page, "test", 1, "", frameDocuments);
-  assert.equal((frames.tree.match(/Child action/g) ?? []).length, 2, frames.tree);
-  const located = await resolveRef(view.page, frameDocuments.lookup(frames.documentToken)!, "f2e1", true);
-  assert.ok(located.ok, JSON.stringify(located));
   for (const frame of view.page.mainFrame.framesInSubtree) await frame.executeJavaScript(`window.fixtureEvents = []; for (const type of ['mousedown', 'mouseup', 'click']) document.addEventListener(type, e => window.fixtureEvents.push({type, x:e.clientX, y:e.clientY, tag:e.target.tagName}));`);
-  const point = { x: Math.round(located.value.element.x + located.value.element.width / 2), y: Math.round(located.value.element.y + located.value.element.height / 2) };
-  await view.sendMouseInput!({ type: "mouseMove", ...point });
-  await view.sendMouseInput!({ type: "mouseDown", button: "left", clickCount: 1, ...point });
-  await view.sendMouseInput!({ type: "mouseUp", button: "left", clickCount: 1, ...point });
-  const clickedFrame = located.value.frame;
+  // Holds the page moving until the first input is refused, as a slow runner
+  // leaves it unsettled after iframe load; the retry must then land on the target.
+  const unsettled = process.env.REASONIX_BROWSER_UNSETTLED_INPUT === "1";
+  if (unsettled) await view.page.mainFrame.executeJavaScript(`(() => { let offset = 0; window.fixtureUnsettled = setInterval(() => { document.body.style.paddingTop = \`\${++offset % 40}px\`; }, 4); return true; })()`);
+  let observedFrom = 0;
+  const { point, located } = await clickObserved(async attempt => {
+    if (unsettled && attempt === 1) await view.page.mainFrame.executeJavaScript("clearInterval(window.fixtureUnsettled)");
+    observedFrom = targetAttachments;
+    const frames = await takeSnapshot(view.page, "test", 1, "", frameDocuments);
+    assert.equal((frames.tree.match(/Child action/g) ?? []).length, 2, frames.tree);
+    const located = await resolveRef(view.page, frameDocuments.lookup(frames.documentToken)!, "f2e1", true);
+    assert.ok(located.ok, JSON.stringify(located));
+    return { located: located.value, point: { x: Math.round(located.value.element.x + located.value.element.width / 2), y: Math.round(located.value.element.y + located.value.element.height / 2) } };
+  });
+  const clickedFrame = located.frame;
   const clickedBy = Date.now() + 1000;
   let clicked = false;
   while (!clicked && Date.now() < clickedBy) { clicked = await clickedFrame.executeJavaScript("Boolean(window.clicked)") as boolean; if (!clicked) await new Promise(resolve => setTimeout(resolve, 16)); }
   if (!clicked) console.error(JSON.stringify({ point, scale: view.inputScale?.(), frames: await Promise.all(view.page.mainFrame.framesInSubtree.map(frame => frame.executeJavaScript(`({events:window.fixtureEvents,width:innerWidth,height:innerHeight,rects:[...document.querySelectorAll('iframe,button')].map(e=>({tag:e.tagName,rect:e.getBoundingClientRect().toJSON()}))})`))) }));
   assert.equal(clicked, true, "cross-origin reference must hit the original element");
+  if (unsettled) assert.ok(inputRefusals > 0, "input on a moving page must be refused before dispatch");
   await clickedFrame.executeJavaScript(`(() => { const input = document.createElement("input"); input.type = "file"; input.setAttribute("aria-label", "Attach"); input.onchange = () => { window.uploaded = input.files[0]?.name; }; document.body.append(input); })()`);
   const uploadSnapshot = await takeSnapshot(view.page, "test", 1, "", frameDocuments);
   const uploadRef = uploadSnapshot.tree.match(/"Attach"[^\n]*ref=(f2e\d+)/)?.[1];
@@ -105,7 +130,9 @@ try {
   assert.equal((await uploadFiles(view.page, upload.value, [uploadPath], () => {}, () => { uploadDispatches++; })).executed, true);
   assert.equal(uploadDispatches, 1);
   assert.equal(await clickedFrame.executeJavaScript("window.uploaded"), "fixture.txt");
-  assert.equal(targetAttachments, 1, "snapshot, ref resolution, input and upload must share one OOPIF session");
+  // A refused child-frame attempt discards its session, so count from the observation that clicked.
+  assert.ok(targetAttachments - observedFrom <= 1, "snapshot, ref resolution, input and upload must share one OOPIF session");
+  const attachedBeforeIdle = targetAttachments;
   releaseInitialObservation?.();
   releaseInitialObservation = undefined;
   console.log("cross-origin file upload through bounded frame runtime: passed");
@@ -116,7 +143,7 @@ try {
   assert.equal(view.page.debugger.isAttached(), false, "idle connection must be released");
   const afterIdle = await takeSnapshot(view.page, "test", 1, "", new DocumentRegistry());
   assert.equal((afterIdle.tree.match(/Child action/g) ?? []).length, 3, afterIdle.tree);
-  assert.equal(targetAttachments, 2, "idle release must initialize one fresh OOPIF session");
+  assert.equal(targetAttachments, attachedBeforeIdle + 1, "idle release must initialize one fresh OOPIF session");
   console.log("CDP idle release and new observation: passed");
   frameLease();
   console.log("same-origin and cross-origin isolated snapshots: passed");
@@ -142,11 +169,10 @@ try {
     for (let transition = 0; transition < 3; transition++) {
       view.setViewport(null);
       view.page.setZoomFactor(1.25);
-      const zoomPoint = await view.page.mainFrame.executeJavaScript(`(() => { window.fixtureZoomClicked = false; const button = document.querySelector('button'); button.onclick = () => { window.fixtureZoomClicked = true; }; button.scrollIntoView(); const r = button.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`) as { x: number; y: number };
-      const zoomedPoint = { x: Math.round(zoomPoint.x * 1.25), y: Math.round(zoomPoint.y * 1.25) };
-      await view.sendMouseInput!({ type: "mouseMove", ...zoomedPoint });
-      await view.sendMouseInput!({ type: "mouseDown", button: "left", clickCount: 1, ...zoomedPoint });
-      await view.sendMouseInput!({ type: "mouseUp", button: "left", clickCount: 1, ...zoomedPoint });
+      const { zoomPoint, point: zoomedPoint } = await clickObserved(async () => {
+        const zoomPoint = await view.page.mainFrame.executeJavaScript(`(() => { window.fixtureZoomClicked = false; const button = document.querySelector('button'); button.onclick = () => { window.fixtureZoomClicked = true; }; button.scrollIntoView(); const r = button.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2}; })()`) as { x: number; y: number };
+        return { zoomPoint, point: { x: Math.round(zoomPoint.x * 1.25), y: Math.round(zoomPoint.y * 1.25) } };
+      });
       let zoomClicked = false;
       const zoomDeadline = Date.now() + 1000;
       while (!zoomClicked && Date.now() < zoomDeadline) {
@@ -159,27 +185,26 @@ try {
       for (const displayScale of [null, "fit", 0.5, 0.75] as const) {
         if (displayScale !== null) view.setViewport({ width: 1280, height: 720, scale: displayScale });
         for (const prefix of ["f1", "f2", "f3"]) {
-          const docs = new DocumentRegistry();
-          const observed = await takeSnapshot(view.page, "test", 1, "", docs);
-          const ref = observed.tree.match(new RegExp(`"Child action"[^\\n]*ref=(${prefix}e\\d+)`))?.[1];
-          assert.ok(ref, observed.tree);
-          const resolved = await resolveRef(view.page, docs.lookup(observed.documentToken)!, ref, true);
-          assert.ok(resolved.ok, JSON.stringify(resolved));
-          await resolved.value.frame.executeJavaScript("window.clicked = false");
-          const scale = view.inputScale?.() ?? 1;
-          const point = { x: Math.round((resolved.value.element.x + resolved.value.element.width / 2) * scale), y: Math.round((resolved.value.element.y + resolved.value.element.height / 2) * scale) };
-          await view.sendMouseInput!({ type: "mouseMove", ...point });
-          await view.sendMouseInput!({ type: "mouseDown", button: "left", clickCount: 1, ...point });
-          await view.sendMouseInput!({ type: "mouseUp", button: "left", clickCount: 1, ...point });
+          const { target, scale, point } = await clickObserved(async () => {
+            const docs = new DocumentRegistry();
+            const observed = await takeSnapshot(view.page, "test", 1, "", docs);
+            const ref = observed.tree.match(new RegExp(`"Child action"[^\\n]*ref=(${prefix}e\\d+)`))?.[1];
+            assert.ok(ref, observed.tree);
+            const resolved = await resolveRef(view.page, docs.lookup(observed.documentToken)!, ref, true);
+            assert.ok(resolved.ok, JSON.stringify(resolved));
+            await resolved.value.frame.executeJavaScript("window.clicked = false");
+            const scale = view.inputScale?.() ?? 1;
+            return { target: resolved.value, scale, point: { x: Math.round((resolved.value.element.x + resolved.value.element.width / 2) * scale), y: Math.round((resolved.value.element.y + resolved.value.element.height / 2) * scale) } };
+          });
           const clickDeadline = Date.now() + 1000;
           let fitClicked = false;
           while (!fitClicked && Date.now() < clickDeadline) {
-            fitClicked = await resolved.value.frame.executeJavaScript("Boolean(window.clicked)") as boolean;
+            fitClicked = await target.frame.executeJavaScript("Boolean(window.clicked)") as boolean;
             if (!fitClicked) await new Promise(resolve => setTimeout(resolve, 16));
           }
-          if (!fitClicked) console.error(JSON.stringify({ prefix, point, scale, element: resolved.value.element, frames: await Promise.all(view.page.mainFrame.framesInSubtree.map(frame => frame.executeJavaScript(`({events:window.fixtureEvents,width:innerWidth,height:innerHeight,rects:[...document.querySelectorAll('iframe,button')].map(e=>({tag:e.tagName,rect:e.getBoundingClientRect().toJSON()}))})`))) }));
+          if (!fitClicked) console.error(JSON.stringify({ prefix, point, scale, element: target.element, frames: await Promise.all(view.page.mainFrame.framesInSubtree.map(frame => frame.executeJavaScript(`({events:window.fixtureEvents,width:innerWidth,height:innerHeight,rects:[...document.querySelectorAll('iframe,button')].map(e=>({tag:e.tagName,rect:e.getBoundingClientRect().toJSON()}))})`))) }));
           assert.equal(fitClicked, true, `foreground Fit must hit ${prefix}, scale=${scale}, point=${JSON.stringify(point)}`);
-          const receipt = await resolved.value.frame.executeJavaScript(`(() => { const event = window.fixtureEvents.filter(e => e.type === 'click').at(-1); const rect = document.querySelector('button').getBoundingClientRect(); return {event, x:rect.x+rect.width/2, y:rect.y+rect.height/2}; })()`) as { event: { x: number; y: number }; x: number; y: number };
+          const receipt = await target.frame.executeJavaScript(`(() => { const event = window.fixtureEvents.filter(e => e.type === 'click').at(-1); const rect = document.querySelector('button').getBoundingClientRect(); return {event, x:rect.x+rect.width/2, y:rect.y+rect.height/2}; })()`) as { event: { x: number; y: number }; x: number; y: number };
           assert.ok(Math.abs(receipt.event.x - receipt.x) <= 2 && Math.abs(receipt.event.y - receipt.y) <= 2, `pointer must hit the observed centre, not merely the same large button: ${JSON.stringify({ prefix, scale, receipt })}`);
         }
       }
