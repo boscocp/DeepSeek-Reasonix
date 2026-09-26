@@ -40,7 +40,7 @@ func (m *model) greet() tea.Cmd {
 	return func() tea.Msg {
 		s, _ := m.client.Status(m.ctx)
 		if m.scr == nil {
-			return tea.Println(banner(s))()
+			return tea.Println(m.glyphs.apply(banner(s)))()
 		}
 		return bannerMsg{s: s}
 	}

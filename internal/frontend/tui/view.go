@@ -46,6 +46,12 @@ func (m *model) bottomLines() bottom {
 // bottom region; otherwise everything settled is already in the terminal's
 // scrollback and only what is still changing is drawn above it.
 func (m *model) View() tea.View {
+	v := m.frame()
+	v.Content = m.glyphs.apply(v.Content)
+	return v
+}
+
+func (m *model) frame() tea.View {
 	b := m.bottomLines()
 	if m.scr != nil {
 		return m.fullView(b.rows, b.composerAt)
