@@ -47,8 +47,8 @@ func readEditSource(ctx context.Context, overlay FileOverlay, path string) (sour
 		}
 		return editSource{enc: fileenc.UTF8, id: id}, &os.PathError{Op: "read", Path: path, Err: os.ErrNotExist}
 	}
-	enc, _ := fileenc.Detect(data)
-	content := string(fileenc.Decode(data, enc))
+	enc, text := fileenc.DetectAndDecode(data)
+	content := string(text)
 	if overlay != nil && enc == fileenc.UTF8 && filepath.IsAbs(path) {
 		if buffered, ok := overlay.ReadTextFile(ctx, path); ok {
 			return editSource{content: buffered, enc: enc, overlay: true, id: overlayIdentity(buffered)}, nil

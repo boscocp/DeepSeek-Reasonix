@@ -36,7 +36,11 @@ func repairProviderEndpointContractsFileLocked(path string) ([]ProviderEndpointR
 	if err != nil || len(repairs) == 0 {
 		return repairs, err
 	}
-	if err := fileutil.AtomicWriteFile(resolved, fileencoding.Encode(next, encoding), info.Mode().Perm()); err != nil {
+	encoded, err := fileencoding.Encode(next, encoding)
+	if err != nil {
+		return nil, err
+	}
+	if err := fileutil.AtomicWriteFile(resolved, encoded, info.Mode().Perm()); err != nil {
 		return nil, err
 	}
 	return repairs, nil

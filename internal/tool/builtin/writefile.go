@@ -150,7 +150,11 @@ func (w writeFile) Execute(ctx context.Context, args json.RawMessage) (string, e
 }
 
 func createFileEncoded(path, content string, enc fileenc.Kind) error {
-	return fileutil.AtomicCreateFile(path, fileenc.Encode(content, enc), 0o644)
+	data, err := fileenc.Encode(content, enc)
+	if err != nil {
+		return err
+	}
+	return fileutil.AtomicCreateFile(path, data, 0o644)
 }
 
 // BindFileWriteReceipt returns t with a per-runtime write receipt callback when

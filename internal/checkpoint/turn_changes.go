@@ -143,9 +143,11 @@ func (s *Store) addTurnFile(r *TurnChanges, f FileSnap, remaining *int) {
 		r.gap("ownership_unknown")
 		return
 	}
-	if f.Content != nil && (f.SHA256 == "" || Digest(v3PayloadBytes(f)) != f.SHA256) {
-		r.gap("snapshot_unavailable")
-		return
+	if f.Content != nil {
+		if payload, err := v3PayloadBytes(f); err != nil || f.SHA256 == "" || Digest(payload) != f.SHA256 {
+			r.gap("snapshot_unavailable")
+			return
+		}
 	}
 	before := ""
 	if f.Content != nil {
