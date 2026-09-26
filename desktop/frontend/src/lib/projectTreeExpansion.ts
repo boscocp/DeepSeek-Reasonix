@@ -60,5 +60,10 @@ export function defaultExpandedProjectTreeKeys(
   activeTopicId?: string,
   activeSessionPath?: string,
 ): string[] {
-  return activeSessionAncestorKeys(nodes, activeScope, activeWorkspaceRoot, activeTopicId, activeSessionPath);
+  const keys = activeSessionAncestorKeys(nodes, activeScope, activeWorkspaceRoot, activeTopicId, activeSessionPath);
+  if (keys.length > 0 || [activeScope, activeWorkspaceRoot, activeTopicId, activeSessionPath].some((v) => (v ?? "").trim())) return keys;
+  // With nothing open, a collapsed Global folder never requests its first page
+  // and reads as an empty history, so it starts expanded.
+  const global = nodes.find((node) => node?.kind === "global_folder");
+  return global ? [projectTreeNodeKey(global, 0)] : [];
 }
