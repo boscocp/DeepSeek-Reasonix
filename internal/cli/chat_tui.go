@@ -61,6 +61,7 @@ type chatTUI struct {
 
 	width  int
 	height int
+	glyphs *glyphFit // console-measured stand-ins for runes drawn wider than counted
 	// themeSweep freezes the frame while a /theme switch wipes across it.
 	themeSweep *themeSweep
 	// nativeScrollback keeps Termux out of alt-screen mode so taps still focus
@@ -687,6 +688,7 @@ func newChatTUI(ctrl control.SessionAPI, missing string, eventCh chan event.Even
 		nativeScrollback:         nativeScrollback,
 		legacyScrollClear:        useLegacyViewportScrollClear(runtime.GOOS, os.Environ()),
 		mouseCaptureOff:          mouseCaptureOffByDefault(),
+		glyphs:                   newConsoleGlyphFit(os.Stdout),
 		input:                    ti,
 		spinner:                  sp,
 		submittedInputCursor:     -1,
@@ -3248,6 +3250,12 @@ func (m chatTUI) cancelRequested() bool {
 }
 
 func (m chatTUI) View() tea.View {
+	v := m.frame()
+	v.Content = m.glyphs.apply(v.Content)
+	return v
+}
+
+func (m chatTUI) frame() tea.View {
 	if m.themeSweep != nil {
 		v := tea.NewView(m.themeSweep.render())
 		if !m.nativeScrollback {
