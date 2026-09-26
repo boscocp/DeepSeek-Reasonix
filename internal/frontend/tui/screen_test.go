@@ -61,6 +61,39 @@ func TestFullScreenScrollsAndFollowsTheTail(t *testing.T) {
 	}
 }
 
+// Shift+PgUp/PgDn page the transcript as they page a terminal's scrollback.
+func TestShiftPageKeysScrollTheTranscript(t *testing.T) {
+	m, _ := testModel(t)
+	fillTranscript(m, 60)
+	m.View()
+	press(m, "shift+pgup")
+	if m.scr.follow {
+		t.Fatalf("shift+pgup left the view on the tail at %d", m.scr.yoff)
+	}
+	press(m, "shift+pgdown")
+	if !m.scr.follow {
+		t.Fatalf("shift+pgdown did not return to the tail, view at %d", m.scr.yoff)
+	}
+	if got := m.composer.Value(); got != "" {
+		t.Fatalf("a scroll key reached the composer: %q", got)
+	}
+}
+
+// Shift+Insert pastes the clipboard's text, as it does in a Linux terminal.
+func TestShiftInsertPastesClipboardText(t *testing.T) {
+	for _, env := range []string{"SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"} {
+		t.Setenv(env, "")
+	}
+	m, _ := testModel(t)
+	cmd := press(m, "shift+insert")
+	if cmd == nil {
+		t.Fatal("shift+insert did nothing")
+	}
+	if _, ok := cmd().(clipTextMsg); !ok {
+		t.Fatal("shift+insert did not read the clipboard's text")
+	}
+}
+
 // Dragging the thumb to the bottom of the track lands on the last page.
 func TestScrollbarDragMovesTheView(t *testing.T) {
 	m, _ := testModel(t)

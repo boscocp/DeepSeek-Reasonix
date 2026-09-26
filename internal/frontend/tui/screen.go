@@ -361,9 +361,9 @@ func (m *model) scrollKey(k string) bool {
 	}
 	page := max(m.viewportHeight()-1, 1)
 	switch k {
-	case "pgup":
+	case "pgup", "shift+pgup":
 		m.scrollBy(-page)
-	case "pgdown":
+	case "pgdown", "shift+pgdown":
 		m.scrollBy(page)
 	case "ctrl+home":
 		m.scr.yoff, m.scr.follow = 0, false
