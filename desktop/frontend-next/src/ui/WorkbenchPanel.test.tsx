@@ -161,4 +161,117 @@ describe("WorkbenchPanel", () => {
     await user.click(screen.getByRole("button", { name: "在系统文件管理器中显示工作区" }));
     expect((await screen.findByRole("alert")).textContent).toBe("这个内核不在本机，没法在系统文件管理器中显示它的文件。");
   });
+
+  const diskPort = (disk: { content: string; revision: string }) => {
+    const port = new MockPort();
+    vi.spyOn(port, "workspaceFiles").mockImplementation(async () => ({ files: ["notes.md"], directories: [] }));
+    vi.spyOn(port, "workspaceFile").mockImplementation(async (path: string) => ({ path, ...disk }));
+    return port;
+  };
+
+  it("shows an open file as it is on disk once a turn settles, without reopening it", async () => {
+    const user = userEvent.setup();
+    const disk = { content: "# First", revision: "r1" };
+    const props = { port: diskPort(disk), tabs: [], manual: false, shown: true, scheme: "light" as const, changes: [], onCloseManual: vi.fn(), onSurfaces: vi.fn(), onExternal: vi.fn() };
+    const { rerender } = render(<WorkbenchPanel {...props} running />);
+    await user.click(await screen.findByRole("button", { name: "notes.md" }));
+    await waitFor(() => expect(document.querySelector(".workbench-read h1")?.textContent).toBe("First"));
+
+    Object.assign(disk, { content: "# Second", revision: "r2" });
+    rerender(<WorkbenchPanel {...props} running={false} />);
+
+    await waitFor(() => expect(document.querySelector(".workbench-read h1")?.textContent).toBe("Second"));
+  });
+
+  it("shows an open file as it is on disk once the window is looked at again", async () => {
+    const user = userEvent.setup();
+    const disk = { content: "# First", revision: "r1" };
+    render(<WorkbenchPanel port={diskPort(disk)} tabs={[]} manual={false} shown scheme="light" changes={[]} onCloseManual={vi.fn()} onSurfaces={vi.fn()} onExternal={vi.fn()} />);
+    await user.click(await screen.findByRole("button", { name: "notes.md" }));
+    await waitFor(() => expect(document.querySelector(".workbench-read h1")?.textContent).toBe("First"));
+
+    Object.assign(disk, { content: "# Second", revision: "r2" });
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() => expect(document.querySelector(".workbench-read h1")?.textContent).toBe("Second"));
+  });
+
+  it("keeps unsaved edits when the file changes on disk underneath them", async () => {
+    const user = userEvent.setup();
+    const disk = { content: "# First", revision: "r1" };
+    const port = diskPort(disk);
+    const props = { port, tabs: [], manual: false, shown: true, scheme: "light" as const, changes: [], onCloseManual: vi.fn(), onSurfaces: vi.fn(), onExternal: vi.fn() };
+    const { rerender } = render(<WorkbenchPanel {...props} running />);
+    await user.click(await screen.findByRole("button", { name: "notes.md" }));
+    await waitFor(() => expect(document.querySelector(".workbench-read h1")?.textContent).toBe("First"));
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    const content = await waitFor(() => {
+      const el = document.querySelector(".cm-content");
+      if (!el) throw new Error("editor not mounted");
+      return el as HTMLElement;
+    });
+    const view = EditorView.findFromDOM(content)!;
+    act(() => view.dispatch({ changes: { from: view.state.doc.length, insert: "\n\n## Mine" } }));
+    const reads = vi.mocked(port.workspaceFile).mock.calls.length;
+
+    Object.assign(disk, { content: "# Second", revision: "r2" });
+    rerender(<WorkbenchPanel {...props} running={false} />);
+    await waitFor(() => expect(vi.mocked(port.workspaceFiles).mock.calls.length).toBeGreaterThan(1));
+
+    expect(vi.mocked(port.workspaceFile).mock.calls.length).toBe(reads);
+    expect(view.state.doc.toString()).toBe("# First\n\n## Mine");
+  });
+  // Opens notes.md in the editor, then holds the next disk read until the test
+  // releases it, so an edit or a save can land while that read is in flight.
+  const openWithHeldRead = async () => {
+    const user = userEvent.setup();
+    const disk = { content: "# First", revision: "r1" };
+    const port = diskPort(disk);
+    const props = { port, tabs: [], manual: false, shown: true, scheme: "light" as const, changes: [], onCloseManual: vi.fn(), onSurfaces: vi.fn(), onExternal: vi.fn() };
+    const { rerender } = render(<WorkbenchPanel {...props} running />);
+    await user.click(await screen.findByRole("button", { name: "notes.md" }));
+    await waitFor(() => expect(document.querySelector(".workbench-read h1")?.textContent).toBe("First"));
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    const content = await waitFor(() => {
+      const el = document.querySelector(".cm-content");
+      if (!el) throw new Error("editor not mounted");
+      return el as HTMLElement;
+    });
+    const view = EditorView.findFromDOM(content)!;
+    let release: (file: { path: string; content: string; revision: string }) => void = () => {};
+    vi.mocked(port.workspaceFile).mockImplementationOnce(() => new Promise((done) => (release = done)));
+    const reads = vi.mocked(port.workspaceFile).mock.calls.length;
+    rerender(<WorkbenchPanel {...props} running={false} />);
+    await waitFor(() => expect(vi.mocked(port.workspaceFile).mock.calls.length).toBe(reads + 1));
+    const land = async (file: { content: string; revision: string }) => {
+      await act(async () => {
+        release({ path: "notes.md", ...file });
+        await Promise.resolve();
+      });
+    };
+    return { user, port, view, land };
+  };
+
+  it("keeps an edit made while a reload was reading the file", async () => {
+    const { view, land } = await openWithHeldRead();
+
+    act(() => view.dispatch({ changes: { from: view.state.doc.length, insert: "\n\n## Mine" } }));
+    await land({ content: "# Second", revision: "r2" });
+
+    expect(view.state.doc.toString()).toBe("# First\n\n## Mine");
+  });
+
+  it("drops a reload that was issued before a save and lands after it", async () => {
+    const { user, port, view, land } = await openWithHeldRead();
+    vi.spyOn(port, "saveWorkspaceFile").mockImplementation(async (file) => ({ ...file, revision: "r3" }));
+
+    act(() => view.dispatch({ changes: { from: view.state.doc.length, insert: "\n\n## Saved" } }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(port.saveWorkspaceFile).toHaveBeenCalled());
+    await land({ content: "# Second", revision: "r2" });
+
+    expect(view.state.doc.toString()).toBe("# First\n\n## Saved");
+  });
 });
