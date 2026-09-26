@@ -228,23 +228,35 @@ func (a *App) startSessionCatalog() {
 	}()
 }
 
+// sessionCatalogClose is one stop's release of the catalog handles it took.
+type sessionCatalogClose struct {
+	done chan struct{}
+	err  error
+}
+
+// stopSessionCatalog reports whether every catalog handle this App opened is
+// released. A close that outlives its deadline keeps running and stays owed:
+// the next stop waits for it rather than reporting a handle it has forgotten.
 func (a *App) stopSessionCatalog(timeout time.Duration) bool {
 	if a == nil {
 		return true
 	}
+	deadline := time.Now().Add(timeout)
+	closing := &sessionCatalogClose{done: make(chan struct{})}
 	a.catalogLifecycleMu.Lock()
 	cancel := a.catalogCancel
 	done := a.catalogDone
+	earlier := a.catalogClosing
 	a.catalogCancel = nil
 	a.catalogDone = nil
 	a.catalogInitialReconcileDone = nil
 	a.catalogMetadataRequests = nil
+	a.catalogClosing = closing
 	a.catalogLifecycleMu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
 	catalog := a.sessionCatalog.Swap(nil)
-	deadline := time.Now().Add(timeout)
 	// Pair the nil publication with the request-side locked recheck. Once this
 	// barrier passes, the snapshot contains every reconcile that can use catalog
 	// and no new one can be added.
@@ -254,26 +266,26 @@ func (a *App) stopSessionCatalog(timeout time.Duration) bool {
 		reconcileDone = append(reconcileDone, job.done)
 	}
 	a.catalogReconcileMu.Unlock()
-	stopped := true
-	for _, done := range reconcileDone {
-		if !waitChannelBefore(done, deadline) {
-			stopped = false
-			break
+	go func() {
+		defer close(closing.done)
+		// A reconcile may wait on discovery that stopping has paused, so it
+		// only defers the close until the deadline, never past it.
+		for _, reconciled := range reconcileDone {
+			if !waitChannelBefore(reconciled, deadline) {
+				break
+			}
 		}
-	}
-	if catalog != nil {
-		remaining := max(time.Until(deadline), 0)
-		ctx, closeCancel := context.WithTimeout(context.Background(), remaining)
-		err := catalog.Close(ctx)
-		closeCancel()
-		if err != nil {
-			stopped = false
+		if catalog != nil {
+			closing.err = catalog.Close(context.Background())
 		}
-	}
-	if done != nil && !waitChannelBefore(done, deadline) {
-		stopped = false
-	}
-	return stopped
+		if done != nil {
+			<-done
+		}
+		if earlier != nil {
+			<-earlier.done
+		}
+	}()
+	return waitChannelBefore(closing.done, deadline) && closing.err == nil
 }
 
 func waitChannelBefore(done <-chan struct{}, deadline time.Time) bool {

@@ -37,7 +37,7 @@ func TestLegacyTopicArchiveVisibility(t *testing.T) {
 						// the owner now, so Windows sees closed SQLite handles first.
 						t.Cleanup(func() {
 							owner.desktopSessions.readSnapshots.close()
-							if !owner.stopSessionCatalog(time.Second) {
+							if !owner.stopSessionCatalog(sessionCatalogTestDeadline) {
 								t.Error("session catalog did not stop before directory cleanup")
 							}
 						})
@@ -114,7 +114,9 @@ func TestLegacyTopicArchiveVisibility(t *testing.T) {
 					// after a fresh process loads the registry without a warm catalog.
 					a.closeSessionServices()
 					a.desktopSessions.readSnapshots.close()
-					a.stopSessionCatalog(time.Second)
+					if !a.stopSessionCatalog(sessionCatalogTestDeadline) {
+						t.Fatal("session catalog did not stop before the fresh process")
+					}
 					a = NewApp()
 					a.ctx = t.Context()
 					a.desktopSessions.root = canonicalRoot
