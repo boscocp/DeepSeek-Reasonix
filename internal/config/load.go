@@ -790,6 +790,7 @@ func normalizeConfigForEdit(cfg *Config) bool {
 	changed = normalizeLegacyStepFunBaseURLs(cfg) || changed
 	changed = normalizeLegacyLongCatContextWindows(cfg) || changed
 	changed = normalizeLegacyQwenContextWindows(cfg) || changed
+	changed = normalizeLegacyStepFunContextWindows(cfg) || changed
 	changed = normalizeLegacyKimiK3Catalog(cfg) || changed
 	changed = normalizeLegacyOpenCodeGoInstalls(cfg) || changed
 	changed = normalizeLegacyMimoCustomProviders(cfg) || changed
