@@ -916,6 +916,13 @@ Reasonix is an MCP client. A `[[plugins]]` entry's `type` selects the transport:
 of the file); `sse` connects to servers that still use the legacy persistent
 GET + announced POST endpoint transport.
 
+`${REASONIX_WORKSPACE_ROOT}` (or `${CLAUDE_PROJECT_DIR}`) expands to the current
+workspace's absolute path, so one global entry can name the project:
+
+```toml
+headers = { IJ_MCP_SERVER_PROJECT_PATH = "${REASONIX_WORKSPACE_ROOT}" }
+```
+
 For a remote HTTP server without a static `Authorization` header, an
 authentication challenge is shown as **Sign in**. Run
 `reasonix mcp auth <name>` in the CLI, or click **Sign in** for that server in

@@ -725,6 +725,13 @@ Reasonix 是一个 MCP 客户端。`[[plugins]]` 的 `type` 选择传输：`stdi
 `headers`（`${VAR}` / `${VAR:-default}` 从环境展开，密钥不入文件）。
 `sse` 则兼容仍使用持久 GET 与 server 公布 POST endpoint 的旧版远程 server。
 
+`${REASONIX_WORKSPACE_ROOT}`（或 `${CLAUDE_PROJECT_DIR}`）展开为当前工作区的绝对路径，
+一条全局配置即可指明项目：
+
+```toml
+headers = { IJ_MCP_SERVER_PROJECT_PATH = "${REASONIX_WORKSPACE_ROOT}" }
+```
+
 远程 HTTP server 未配置静态 `Authorization` header 时，认证要求会显示为 **登录**。
 CLI 可运行 `reasonix mcp auth <name>`，桌面端则在 MCP 面板点击该 server 的 **登录**。
 Reasonix 会执行 OAuth 元数据发现、动态客户端注册、PKCE S256 授权与
