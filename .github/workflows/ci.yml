@@ -931,7 +931,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [A-B, C, D, E-H, I-P, Q-S, T-Z, history-3-5, history-6-7, history-8-9, history-10-11]
+        group: [A-B, C, D, E-H, I-M, N-P, Q-S, T-Z, history-3-5, history-6-7, history-8-9, history-10-11]
     defaults:
       run:
         working-directory: desktop
@@ -1302,7 +1302,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [A-B, C, D, E-H, I-P, Q-S, T-Z, history-3-5, history-6-7, history-8-9, history-10-11]
+        group: [A-B, C, D, E-H, I-M, N-P, Q-S, T-Z, history-3-5, history-6-7, history-8-9, history-10-11]
     defaults:
       run:
         shell: bash
