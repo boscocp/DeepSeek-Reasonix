@@ -81,6 +81,12 @@ func sessionOperationErrorForTarget(err error, targetKey, operationID string) er
 			Code: sessionOperationTargetNotFound, Message: "The session no longer exists or has been removed.",
 			TargetKey: targetKey, OperationID: operationID,
 		}
+	case errors.Is(err, session.ErrDamagedStore):
+		slog.Warn("desktop: session store is damaged", "target", targetKey, "operation", operationID, "err", err)
+		return &SessionOperationError{
+			Code: sessionOperationDamaged, Message: "This session's saved file is damaged and cannot be read.",
+			TargetKey: targetKey, OperationID: operationID,
+		}
 	case errors.Is(err, errTopicArchiveBusy), errors.Is(err, errTopicHasActiveWork), errors.Is(err, agent.ErrSessionLeaseHeld):
 		return &SessionOperationError{
 			Code: sessionOperationBusy, Message: "Another operation is using this session. Try again shortly.",

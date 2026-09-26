@@ -28,6 +28,7 @@ const (
 	sessionOperationTitleConflict   = "title_conflict"
 	sessionOperationBusy            = "operation_busy"
 	sessionOperationFailed          = "operation_failed"
+	sessionOperationDamaged         = "session_damaged"
 )
 
 // SessionOperationError is stable at the host boundary: the code is intended

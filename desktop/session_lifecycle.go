@@ -101,7 +101,7 @@ func (a *App) archiveSessionRefsRemovalHeld(refs []session.SessionRef, operation
 			}
 			guards = append(guards, guard)
 		}
-		if _, err := service.Query().Snapshot(ctx, ref); err != nil {
+		if err := requireArchivableSession(ctx, service, ref); err != nil {
 			return err
 		}
 	}
@@ -397,7 +397,7 @@ func (a *App) restoreCanonicalSession(ctx context.Context, ref session.SessionRe
 	if err != nil {
 		return SessionRestoreResult{}, err
 	}
-	if _, err := a.desktopSessionService("").Query().Snapshot(ctx, ref); err != nil {
+	if err := requireArchivableSession(ctx, a.desktopSessionService(""), ref); err != nil {
 		return SessionRestoreResult{}, err
 	}
 	if operationID == "" {
@@ -456,4 +456,15 @@ func (a *App) idleArchiveRuntimes(ids []string, legacyTargets map[string]bool) (
 		return nil, err
 	}
 	return removed, nil
+}
+
+// requireArchivableSession proves the session exists. Moving a session in or
+// out of the archive never reads its content, so a damaged store stays movable:
+// archiving is how a user sets aside a session that no longer opens.
+func requireArchivableSession(ctx context.Context, service *session.Service, ref session.SessionRef) error {
+	_, err := service.Query().Snapshot(ctx, ref)
+	if errors.Is(err, session.ErrDamagedStore) {
+		return nil
+	}
+	return err
 }

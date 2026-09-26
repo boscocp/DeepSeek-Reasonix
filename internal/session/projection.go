@@ -190,7 +190,9 @@ func applyProjectionEvents(projection *Projection, commit Commit) error {
 		if err != nil {
 			return err
 		}
-		applyTranscriptMetadata(projection, commit, ev)
+		if ev.Kind != "message/complete" {
+			applyTranscriptMetadata(projection, commit, ev)
+		}
 	}
 	// turn/end can be followed by more events in the same atomic commit. Only
 	// after the whole commit is projected do we know whether its cut leaves a
@@ -215,6 +217,8 @@ func projectLegacyImport(projection *Projection, commit Commit, ev Event) error 
 	return nil
 }
 
+// projectMessageComplete keeps an id's first message. The writer refuses a
+// repeat; one already on disk is skipped, metadata included, so the log opens.
 func projectMessageComplete(projection *Projection, commit Commit, ev Event) error {
 	var body struct {
 		Message *provider.Message `json:"message"`
@@ -223,11 +227,12 @@ func projectMessageComplete(projection *Projection, commit Commit, ev Event) err
 		return damagedPayload(ev, err)
 	}
 	if projectionMessageIndex(projection.Messages, body.Message.ID) >= 0 {
-		return damagedPayload(ev, fmt.Errorf("%w %q", ErrDuplicateMessageID, body.Message.ID))
+		return nil
 	}
 	projection.Messages = append(projection.Messages, *body.Message)
 	projection.ModelMessages = append(projection.ModelMessages, provider.ModelMessages([]provider.Message{*body.Message})...)
 	projection.recordTurnReply(*body.Message)
+	applyTranscriptMetadata(projection, commit, ev)
 	return nil
 }
 

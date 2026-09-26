@@ -52,6 +52,11 @@ test("chrome selector does not match unrelated topicbar or topbar class names", 
   assert.equal(out, css);
 });
 
+test("electron stylesheet rewrite keeps a toast over the titlebar clickable", () => {
+  const out = rewriteDragRegions(readFileSync(stylesPath, "utf8"), "electron");
+  assert.match(out, /\.toast\s*\{[^}]*-webkit-app-region:\s*no-drag/);
+});
+
 test("electron stylesheet rewrite leaves transcript boxes out of app-region", () => {
   const out = rewriteDragRegions(readFileSync(stylesPath, "utf8"), "electron");
   assert.match(out, /\.topicbar\s*\{[^}]*-webkit-app-region:\s*drag/);

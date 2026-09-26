@@ -1636,6 +1636,7 @@ export const zh: Record<DictKey, string> = {
   "projectTree.sessionError.staleCursor": "会话内容已变化，请重新加载。",
   "projectTree.sessionError.unsupported": "当前会话暂不支持此操作。",
   "projectTree.sessionError.failed": "无法完成该会话操作，请重试。",
+  "projectTree.sessionError.damaged": "该会话的存档文件已损坏，无法读取。仍可将其移到回收站。",
   "projectTree.newGroup": "新建分组",
   "projectTree.renameGroup": "重命名分组",
   "projectTree.deleteGroup": "删除分组",

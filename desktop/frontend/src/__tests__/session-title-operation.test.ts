@@ -13,6 +13,8 @@ assert.deepEqual(sessionTitleSelector("/tmp/session.jsonl"), { sessionPath: "/tm
 assert.deepEqual(sessionTitleSelector("shared"), { topicId: "shared" });
 assert.equal(sessionTitleErrorKey(new Error("session_operation:title_conflict:internal details")), "projectTree.sessionError.titleConflict");
 assert.equal(sessionTitleErrorKey({ data: { sessionCode: "provider_unavailable" }, message: "secret provider body" }), "projectTree.sessionError.providerUnavailable");
+assert.equal(sessionTitleErrorKey({ data: { sessionCode: "session_damaged" }, message: "session_operation:session_damaged:detail" }), "projectTree.sessionError.damaged");
+assert.equal(sessionTitleErrorKey(new Error("session_operation:session_damaged:This session's saved file is damaged")), "projectTree.sessionError.damaged");
 for (const error of [new Error("failed to read /private/fixture/session"), "lease owner controller test-owner", "provider secret test-token"]) {
   assert.equal(sessionTitleErrorKey(error), "projectTree.sessionError.failed");
 }

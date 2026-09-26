@@ -218,6 +218,7 @@ type startupSessionState struct {
 	durable        uint64
 	catalogPreview string
 	recentMessages []provider.Message
+	messageIDs     messageIdentities
 	tip            durableTip
 }
 
@@ -521,6 +522,7 @@ func loadStartupSessionState(ctx context.Context, dir, eventsPath string, extern
 			projectionErr = err
 			return false
 		}
+		state.messageIDs.admit(commit)
 		return true
 	})
 	if err != nil {
@@ -544,6 +546,7 @@ func loadBoundedStartupSessionState(ctx context.Context, dir string, file *os.Fi
 	var durableEnd int64
 	var projectionErr error
 	sawModelEvent := false
+	repeated := map[uint64]bool{} // both passes keep an id's first message
 	content := contentStoreForSessionDir(dir)
 	err := scanV4CommitFileRefs(ctx, file, 0, 1, content, nil, func(offset int64, commit Commit) bool {
 		business := commit
@@ -578,6 +581,9 @@ func loadBoundedStartupSessionState(ctx context.Context, dir string, file *os.Fi
 					projectionErr = err
 					return false
 				}
+				if !state.messageIDs.admitEvent(resolved, repeated) {
+					continue
+				}
 				recent.Events = append(recent.Events, resolved)
 				applyTranscriptMetadata(&state.projection, commit, resolved)
 			}
@@ -604,7 +610,7 @@ func loadBoundedStartupSessionState(ctx context.Context, dir string, file *os.Fi
 		// reset. Replaying only that reset's wire view cannot recover their state.
 		rejected := maps.Clone(state.projection.RejectedToolResults)
 		checkpoint := state.projection.StreamCheckpoint
-		if err := loadCurrentModelProjection(ctx, file, content, state, modelOffset, modelSequence); err != nil {
+		if err := loadCurrentModelProjection(ctx, file, content, state, modelOffset, modelSequence, repeated); err != nil {
 			return nil, 0, false, err
 		}
 		state.projection.TranscriptInputs, state.projection.HiddenTurns = inputs, hidden
@@ -617,13 +623,13 @@ func loadBoundedStartupSessionState(ctx context.Context, dir string, file *os.Fi
 	return state, durableEnd, durableEnd < info.Size(), nil
 }
 
-func loadCurrentModelProjection(ctx context.Context, file *os.File, content *sessioncontent.Store, state *startupSessionState, offset int64, sequence uint64) error {
+func loadCurrentModelProjection(ctx context.Context, file *os.File, content *sessioncontent.Store, state *startupSessionState, offset int64, sequence uint64, repeated map[uint64]bool) error {
 	var projectionErr error
 	err := scanV4CommitFileRefs(ctx, file, offset, sequence, content, nil, func(_ int64, commit Commit) bool {
 		model := commit
 		model.Events = nil
 		for _, event := range commit.Events {
-			if !modelProjectionEvent(event.Kind) {
+			if !modelProjectionEvent(event.Kind) || repeated[event.Sequence] {
 				continue
 			}
 			resolved, err := resolveProjectionEvent(ctx, content, event)
@@ -693,6 +699,7 @@ func bindSession(handle *Store, opts OpenOptions) (*Session, error) {
 	session.catalogPreview = state.catalogPreview
 	session.recentMessages = detachMessages(state.recentMessages)
 	session.durableRecent = detachMessages(state.recentMessages)
+	session.messageIDs = state.messageIDs
 	session.storageGeneration = handle.identity.Generation
 	session.recovery = handle.recovery
 	binding.metadataSource = session.metadataForDurable

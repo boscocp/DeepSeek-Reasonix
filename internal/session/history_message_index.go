@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 
 	"reasonix/internal/agent"
@@ -39,7 +38,8 @@ func indexOneMessageBody(ctx context.Context, content *sessioncontent.Store, sta
 		visibleTurn = state.visibleTurn
 		state.turns[id] = visibleTurn
 	} else if !upsert {
-		return fmt.Errorf("session: duplicate indexed message id %q", id)
+		// A repeated message/complete keeps the id's first message.
+		return nil
 	}
 	version := state.versions[id] + 1
 	state.versions[id] = version

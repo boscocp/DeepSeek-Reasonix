@@ -419,7 +419,8 @@ func indexSearchMessage(ctx context.Context, tx *sql.Tx, state *searchBuildState
 		position = state.nextPosition
 		state.positions[id] = position
 	} else if !upsert {
-		return fmt.Errorf("session: duplicate search message id %q", id)
+		// A repeated message/complete keeps the id's first message.
+		return nil
 	}
 	if exists {
 		if _, err := tx.ExecContext(ctx, `UPDATE documents SET current=0,valid_to=? WHERE message_id=? AND current=1`, sequence, id); err != nil {

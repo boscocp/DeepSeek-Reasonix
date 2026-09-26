@@ -555,19 +555,7 @@ func indexMessageEvent(ctx context.Context, content *sessioncontent.Store, state
 		}
 		return renumberVisibleTurns(ctx, state, event.Sequence)
 	case "message/complete", "message/upsert":
-		var body struct {
-			Message *provider.Message `json:"message"`
-		}
-		if err := strictPayload(payload, &body); err != nil || body.Message == nil {
-			return damagedPayload(event, err)
-		}
-		message := body.Message
-		if state.commitTurn != "" && message.Role == provider.RoleAssistant && !message.LocalOnly && (strings.TrimSpace(message.Content) != "" || strings.TrimSpace(message.RawContent) != "") {
-			if _, err := state.tx.ExecContext(ctx, `UPDATE turn_summaries SET final_message_id=?,ended_at=MAX(ended_at,started_at+?) WHERE turn_id=?`, message.ID, message.WorkDurationMs, state.commitTurn); err != nil {
-				return err
-			}
-		}
-		return indexOneMessage(ctx, content, state, *body.Message, event.Sequence, event.Kind == "message/upsert")
+		return indexMessageRecord(ctx, content, state, event, payload)
 	case "history/replace", "legacy/import":
 		messages, err := replacementEventMessages(event, payload)
 		if err != nil {
@@ -576,6 +564,27 @@ func indexMessageEvent(ctx context.Context, content *sessioncontent.Store, state
 		return replaceIndexedMessages(ctx, content, state, messages, event.Sequence)
 	}
 	return nil
+}
+
+// indexMessageRecord skips a repeated message/complete whole, so the repeat
+// neither re-indexes the id nor claims the open turn's final reply.
+func indexMessageRecord(ctx context.Context, content *sessioncontent.Store, state *historyBuildState, event Event, payload json.RawMessage) error {
+	var body struct {
+		Message *provider.Message `json:"message"`
+	}
+	if err := strictPayload(payload, &body); err != nil || body.Message == nil {
+		return damagedPayload(event, err)
+	}
+	message := body.Message
+	if _, repeated := state.positions[strings.TrimSpace(message.ID)]; repeated && event.Kind == "message/complete" {
+		return nil
+	}
+	if state.commitTurn != "" && message.Role == provider.RoleAssistant && !message.LocalOnly && (strings.TrimSpace(message.Content) != "" || strings.TrimSpace(message.RawContent) != "") {
+		if _, err := state.tx.ExecContext(ctx, `UPDATE turn_summaries SET final_message_id=?,ended_at=MAX(ended_at,started_at+?) WHERE turn_id=?`, message.ID, message.WorkDurationMs, state.commitTurn); err != nil {
+			return err
+		}
+	}
+	return indexOneMessage(ctx, content, state, *message, event.Sequence, event.Kind == "message/upsert")
 }
 
 func replaceIndexedMessages(ctx context.Context, content *sessioncontent.Store, state *historyBuildState, messages []provider.Message, sequence uint64) error {
