@@ -620,3 +620,79 @@ test("a Linux Go binary that needs the build host's dynamic loader is refused", 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a Wayland session with XWayland relaunches the shell on X11 before anything else starts", () => {
+  const { relaunchForOzonePlatform } = require("../src/ozone.js");
+  const X11 = "--ozone-platform=x11";
+  const cases = [
+    ["wayland with xwayland", { XDG_SESSION_TYPE: "wayland", WAYLAND_DISPLAY: "wayland-0", DISPLAY: ":0" }, ["--flag"], [X11, "--flag"]],
+    ["wayland display alone", { WAYLAND_DISPLAY: "wayland-0", DISPLAY: ":0" }, [], [X11]],
+    ["pure wayland", { XDG_SESSION_TYPE: "wayland", WAYLAND_DISPLAY: "wayland-0" }, ["--flag"], null],
+    ["override wayland", { XDG_SESSION_TYPE: "wayland", DISPLAY: ":0", REASONIX_OZONE_PLATFORM: "wayland" }, [], null],
+    ["override x11", { XDG_SESSION_TYPE: "x11", DISPLAY: ":0", REASONIX_OZONE_PLATFORM: "x11" }, [], [X11]],
+    ["override auto", { XDG_SESSION_TYPE: "wayland", DISPLAY: ":0", REASONIX_OZONE_PLATFORM: "auto" }, [], [X11]],
+    ["explicit flag", { XDG_SESSION_TYPE: "wayland", DISPLAY: ":0" }, ["--ozone-platform=wayland"], null],
+    ["explicit hint", { XDG_SESSION_TYPE: "wayland", DISPLAY: ":0" }, ["--ozone-platform-hint=wayland"], null],
+    ["already relaunched", { XDG_SESSION_TYPE: "wayland", DISPLAY: ":0" }, [X11, "--flag"], null],
+    ["x11 session", { XDG_SESSION_TYPE: "x11", DISPLAY: ":0" }, ["--flag"], null],
+  ];
+  for (const [why, env, args, want] of cases) {
+    const calls = [];
+    const app = { relaunch: (opts) => calls.push(["relaunch", opts.args]), exit: (code) => calls.push(["exit", code]) };
+    const relaunched = relaunchForOzonePlatform(app, { platform: "linux", env, argv: ["/opt/Reasonix Studio/reasonix-studio", ...args] });
+    if (want === null) {
+      assert.equal(relaunched, false, why);
+      assert.deepEqual(calls, [], why);
+    } else {
+      assert.equal(relaunched, true, why);
+      assert.deepEqual(calls, [["relaunch", want], ["exit", 0]], why);
+    }
+  }
+  const calls = [];
+  const app = { relaunch: () => calls.push("relaunch"), exit: () => calls.push("exit") };
+  for (const platform of ["darwin", "win32"]) {
+    assert.equal(relaunchForOzonePlatform(app, { platform, env: { XDG_SESSION_TYPE: "wayland", DISPLAY: ":0" }, argv: ["x"] }), false);
+  }
+  assert.deepEqual(calls, []);
+});
+
+test("the shell leaves for its X11 relaunch before it claims the instance lock", () => {
+  const Module = require("node:module");
+  const calls = [];
+  const inert = new Proxy(function () {}, { get: (_t, key) => (key === "then" ? undefined : inert), apply: () => inert });
+  const app = new Proxy({}, {
+    get: (_t, key) => {
+      if (key === "relaunch") return (opts) => calls.push(["relaunch", opts?.args]);
+      if (key === "exit") return (code) => calls.push(["exit", code]);
+      if (key === "requestSingleInstanceLock") return () => (calls.push(["lock"]), false);
+      if (key === "whenReady") return () => new Promise(() => {});
+      if (key === "getPath") return () => os.tmpdir();
+      if (key === "isPackaged") return false;
+      return inert;
+    },
+  });
+  const fake = new Proxy({ app }, { get: (t, key) => t[key] ?? inert });
+  const load = Module._load;
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  const saved = { XDG_SESSION_TYPE: process.env.XDG_SESSION_TYPE, DISPLAY: process.env.DISPLAY, REASONIX_OZONE_PLATFORM: process.env.REASONIX_OZONE_PLATFORM };
+  const main = require.resolve("../src/main.js");
+  Module._load = function (request, ...rest) {
+    return request === "electron" ? fake : load.call(this, request, ...rest);
+  };
+  Object.defineProperty(process, "platform", { value: "linux" });
+  Object.assign(process.env, { XDG_SESSION_TYPE: "wayland", DISPLAY: ":0" });
+  delete process.env.REASONIX_OZONE_PLATFORM;
+  try {
+    delete require.cache[main];
+    require(main);
+  } finally {
+    Module._load = load;
+    Object.defineProperty(process, "platform", platform);
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    delete require.cache[main];
+  }
+  assert.deepEqual(calls, [["relaunch", ["--ozone-platform=x11", ...process.argv.slice(1)]], ["exit", 0]]);
+});
