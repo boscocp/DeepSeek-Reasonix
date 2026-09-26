@@ -168,13 +168,16 @@ func (c *Controller) SaveSandboxSettings(in SandboxSettings) error {
 	default:
 		return fmt.Errorf("sandbox bash %q: must be enforce|off", in.Bash)
 	}
-	if bash == "enforce" && !sandbox.Available() {
-		return fmt.Errorf("%w: %s", ErrSandboxUnavailable, sandbox.UnavailableRemediation())
-	}
 	unlock := config.LockUserConfigEdits()
 	defer unlock()
 	path := config.UserConfigPath()
 	cfg := config.LoadForEdit(path)
+	// Only asking for the jail is refused where there is none. A file already
+	// holding enforce, which the rendered template writes, keeps saving its
+	// other fields; bash itself stays refused at run time either way.
+	if bash == "enforce" && strings.TrimSpace(cfg.Sandbox.Bash) != "enforce" && !sandbox.Available() {
+		return fmt.Errorf("%w: %s", ErrSandboxUnavailable, sandbox.UnavailableRemediation())
+	}
 	cfg.Sandbox.Bash = bash
 	cfg.Sandbox.Network = in.Network
 	cfg.Sandbox.WorkspaceRoot = strings.TrimSpace(in.WorkspaceRoot)
