@@ -16,6 +16,7 @@ import { LazyMarkdown } from "./LazyMarkdown";
 import type { LocalRefs } from "./Markdown";
 import { docRef } from "./docrefs";
 import { useGlance } from "./glance";
+import { useMarkdownPoll } from "./useMarkdownPoll";
 import { pinToViewport } from "./place";
 
 // The editor and its grammars load with the first file opened, not with Studio.
@@ -384,6 +385,7 @@ export function WorkbenchPanel({
       live = false;
     };
   }, [port, openPath, shown, changeKey, glance, running]);
+  useMarkdownPoll({ port, filePath: shown && readable && mode === "read" ? filePath : "", held, issued, setFailed, setFile, setDraft });
   // Picking a file is asking to read it. Docked, the list and the file share one
   // column, so the list steps aside; side by side it stays where it is.
   const openFile = (path: string) => {
