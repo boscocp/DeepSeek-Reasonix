@@ -86,6 +86,46 @@ check("长工具输出在折叠态即可横向阅读", output?.overflow === "aut
 check("合并读取仍显示失败", await page.locator(".call .fail", { hasText: "项失败" }).count() === 1);
 check("回执没有重复根容器", await page.locator(".rc > .rc").count() === 0);
 
+// The clean receipt shares one row between its label and the evidence behind
+// it. The evidence is a command of any length; the label is CJK, which may break
+// between any two glyphs, so it is the one that must not give up its width.
+const rc = await browser.newPage({ viewport: { width: 1440, height: 900 }, locale: "zh-CN", colorScheme: "dark" });
+rc.on("pageerror", (e) => fails.push("页面异常: " + e.message));
+await rc.goto(PAGE, { waitUntil: "networkidle" });
+await rc.waitForSelector(".compose");
+await rc.evaluate(() => {
+  const command = "test -s AGENTS.md && grep -q 'reasonix' AGENTS.md && ".repeat(8) + "go test ./...";
+  window.__feed({ kind: "turn_started" });
+  window.__feed({ kind: "text", text: "已经更新 AGENTS.md，并运行了验证命令。" });
+  window.__feed({ kind: "message" });
+  window.__feed({ kind: "turn_done", receipt: {
+    verdict: "verified", saysSomething: true,
+    changes: [{ path: "AGENTS.md", reviewed: true }],
+    verifications: [{ command, passed: true }],
+  } });
+});
+await rc.waitForSelector(".rc-ok .rc-t");
+for (const width of [1440, 640, 420]) {
+  await rc.setViewportSize({ width, height: 800 });
+  await rc.waitForTimeout(300);
+  const row = await rc.evaluate(() => {
+    const label = document.querySelector(".rc-ok .rc-t");
+    const src = document.querySelector(".rc-ok .rc-src");
+    const lh = parseFloat(getComputedStyle(label).lineHeight);
+    const tick = document.querySelector(".rc-ok .rc-tick").getBoundingClientRect();
+    const rc = document.querySelector(".rc-ok").getBoundingClientRect();
+    const say = [...document.querySelectorAll('.call[data-k="say"] .out .txt')].pop().getBoundingClientRect();
+    return {
+      lines: Math.round(label.getBoundingClientRect().height / lh), srcClipped: src.scrollWidth > src.clientWidth,
+      dLeft: Math.round(tick.left - say.left), dRight: Math.round(rc.right - say.right),
+    };
+  });
+  check(`${width}px：回执标签不被长命令挤成竖排`, row.lines === 1, `${row.lines} 行`);
+  check(`${width}px：长命令在回执行内截断`, row.srcClipped);
+  check(`${width}px：回执与回答左对齐`, Math.abs(row.dLeft) <= 1, `偏 ${row.dLeft}px`);
+  check(`${width}px：回执不超出回答栏宽`, row.dRight <= 1, `超出 ${row.dRight}px`);
+}
+
 await browser.close();
 if (fails.length) {
   console.error(`\n${fails.length} 项不合格：\n  ` + fails.join("\n  "));

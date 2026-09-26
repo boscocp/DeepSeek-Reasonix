@@ -778,6 +778,7 @@ body { background: var(--page) !important; }
   background: transparent; border: 0; box-shadow: none;
 }
 .flow .call[data-k="say"]:hover { background: transparent; border-color: transparent; }
+.flow .rc { padding-inline-start: 6px; margin-inline-start: -6px; }
 .flow .call[data-k="say"] > .g {
   position: absolute; inset: 0 auto auto 6px; width: 21px; height: 25px; display: block;
 }
