@@ -43,7 +43,7 @@ import (
 // mid-stream) sends no RST, so scanner.Scan() would block forever. Generous on
 // purpose; live streams emit far more often. Stored per-client (client.idleTimeout)
 // so a test can shorten it without a shared global that races other watchdogs.
-const defaultStreamIdleTimeout = 120 * time.Second
+const defaultStreamIdleTimeout = provider.StreamIdleTimeout
 
 const (
 	// anthropicVersion is the required API version header value.
@@ -154,7 +154,7 @@ func New(cfg provider.Config) (provider.Provider, error) {
 
 func newHTTPClient(cfg provider.Config) (*http.Client, error) {
 	spec, _ := cfg.Extra["proxy_spec"].(netclient.ProxySpec)
-	return netclient.NewHTTPClient(spec, netclient.TransportOptions{})
+	return netclient.NewHTTPClient(spec, netclient.TransportOptions{ResponseHeaderTimeout: provider.StreamIdleTimeout})
 }
 
 type client struct {

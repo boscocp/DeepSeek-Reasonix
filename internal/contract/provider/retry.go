@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -39,6 +40,12 @@ var errorBodyReadTimeout = 10 * time.Second
 // usually clears in a couple of attempts, whereas a key that never worked is a
 // real config error and fails fast.
 const maxAuthRetries = 2
+
+// maxTimeoutRetries bounds how many times a transport timeout is retried. A
+// model that is still prefilling times out identically on every attempt and
+// each retry restarts that work, so the full budget would multiply one
+// StreamIdleTimeout window by MaxRetries+1 before the user heard anything.
+const maxTimeoutRetries = 1
 
 // SendOptions carries the per-request context SendWithRetry needs to label
 // errors and decide whether a 401 is worth retrying.
@@ -236,6 +243,11 @@ func transientErr(ctx context.Context, err error) bool {
 	return !errors.Is(err, context.Canceled)
 }
 
+func transportTimeout(err error) bool {
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
 func backoffDelay(attempt int, retryAfter time.Duration) time.Duration {
 	if retryAfter > 0 {
 		if retryAfter > maxRetryAfter {
@@ -300,6 +312,7 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 	var lastErr error
 	var retryAfter time.Duration
 	authRetries := 0
+	timeoutRetries := 0
 
 	for attempt := 0; attempt <= retryLimit; attempt++ {
 		if attempt > 0 {
@@ -322,10 +335,16 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 		recordRequestAttempt(ctx)
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			if !transientErr(ctx, err) {
-				return nil, fmt.Errorf("%s: request failed: %w", opts.Provider, err)
-			}
 			lastErr = fmt.Errorf("%s: request failed: %w", opts.Provider, err)
+			if !transientErr(ctx, err) {
+				return nil, lastErr
+			}
+			if transportTimeout(err) {
+				if timeoutRetries >= maxTimeoutRetries {
+					return nil, lastErr
+				}
+				timeoutRetries++
+			}
 			continue
 		}
 		if resp.StatusCode == http.StatusOK {
