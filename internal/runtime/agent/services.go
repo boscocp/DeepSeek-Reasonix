@@ -66,6 +66,8 @@ type agentServices struct {
 	// content. Only non-ReadOnly tool.Previewer tools fire it, so bash — whose
 	// targets are unknowable — is never tracked. Prefer mutationObserver.
 	preEdit func(diff.Change)
+	// admissionSaver persists the transcript once a turn's user message lands.
+	admissionSaver AdmissionSaver
 	// mutationObserver is the host-side unified file mutation observer: it
 	// captures preimages before tools run and fingerprints after, regardless of
 	// outcome. Never changes provider-visible schemas or prompts.

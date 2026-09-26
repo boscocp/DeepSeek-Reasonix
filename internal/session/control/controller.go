@@ -478,6 +478,7 @@ func New(opts Options) *Controller {
 	if c.executor != nil {
 		c.executor.SetSink(c.sink)
 		c.executor.SetHostContext(c)
+		c.executor.SetAdmissionSaver(c)
 	}
 	cmdsInit := opts.Commands
 	c.commands.Store(&cmdsInit)
