@@ -129,6 +129,18 @@ echo "解释这段代码" | reasonix run
 `--add-dir`、`--continue`、`--resume QUERY`、`--copy`、`--allowed-tools` 和
 `--permission-mode`，以及作为 `--permission-mode auto` 别名的 `--auto` / `-y`。
 
+`--yolo` / `--dangerously-skip-permissions` 同样可用，是 `--permission-mode bypassPermissions`
+的别名。`run` 命令行里参数的位置：
+
+- 参数可以夹在任务文字之间：`reasonix run fix --yolo bug` 以 bypassPermissions 执行任务 `fix bug`。
+- 写在 `run` 前面的参数，只有终端界面（加上 `-y`、`-p`）和 `run` 都以同样方式接受每一个时，才会移到它后面：`reasonix -y run "task"` 等同于
+  `reasonix run -y "task"`。
+- 其中只要有一个是终端界面专用参数（`--inline`、`-r`、不带值的 `--resume`），整条命令行就交给终端界面。
+- 只有 `run` 接受的前置参数（`--output-format`、`--metrics`）也一样：整条命令行交给终端界面，由它报错。这类参数请写在 `run` 后面。
+- 前置的 `-p` 只在子命令之前才算数；写在 `run` 后面的 `-p` 属于 `run` 自己。
+- 前置参数之后的第一个词就是子命令，和不带参数时一样：`reasonix --yolo run the tests` 会无界面执行
+  `the tests`。想用以 "run" 开头的提示词打开终端界面，请给它加引号。
+
 ### 基准对照组
 
 `--ablate` 用于整体关闭某个子系统，让基准测试能把成功率的变化归因到它身上。取值是
@@ -309,7 +321,7 @@ reasonix --allowed-tools "Bash(go test ./...)" --allowed-tools read_file
 | `bypassPermissions` | 跳过审批；等同于 YOLO。 |
 
 无人值守执行需要放行普通 writer fallback 时，使用 `reasonix run --auto ...`
-（或 `-y`）。这个别名不能和显式 `--permission-mode` 同时使用。
+（或 `-y`）。它和 `--yolo` 都不能和显式 `--permission-mode` 同时使用，两者也不能同时使用。
 
 `--allowed-tools` 是会话权限覆盖，不是 provider tool schema 过滤器。规则可以用逗号
 或空格分隔，也可重复传入参数。配置中的 deny 规则始终优先于命令行 allow 规则。

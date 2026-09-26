@@ -6,8 +6,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode"
+
+	"github.com/spf13/pflag"
 
 	"reasonix/internal/base/i18n"
 	"reasonix/internal/state/sessionstore"
@@ -233,4 +236,105 @@ func looksLikeMachineSessionID(query string) bool {
 		}
 	}
 	return true
+}
+
+// registerRunApprovalFlags gives run the approval spellings a bare reasonix
+// takes, so a flag keeps its meaning on either side of the verb.
+func registerRunApprovalFlags(fs *pflag.FlagSet) (auto, yolo *bool) {
+	auto = fs.BoolP("auto", "y", false, "explicitly auto-approve ordinary writer fallbacks (alias for --permission-mode auto)")
+	yolo = fs.Bool("yolo", false, "skip tool approvals (alias for --permission-mode bypassPermissions)")
+	fs.BoolVar(yolo, "dangerously-skip-permissions", false, "alias for --yolo")
+	return auto, yolo
+}
+
+func resolveRunPermissionMode(value string, auto, yolo, modeExplicit bool) (string, error) {
+	switch {
+	case auto && yolo:
+		return "", errors.New("--auto/-y cannot be combined with --yolo")
+	case auto && modeExplicit:
+		return "", errors.New("--auto/-y cannot be combined with --permission-mode")
+	case yolo && modeExplicit:
+		return "", errors.New("--yolo cannot be combined with --permission-mode")
+	case auto:
+		return "auto", nil
+	case yolo:
+		return "bypassPermissions", nil
+	}
+	return value, nil
+}
+
+// startsWithSessionFlag reports whether argv opens with a flag rather than a
+// verb; -y and -p belong to run alone but may still be written first.
+func startsWithSessionFlag(arg string) bool {
+	switch arg {
+	case "-y", "--auto", "-p", "--print":
+		return true
+	}
+	return isDefaultInteractiveFlag(arg) || strings.HasPrefix(arg, "--auto=")
+}
+
+// splitAtRunVerb finds the first positional with the union of the terminal
+// UI's flags and run's, so a value of either is never taken for the verb.
+// lead is resume-normalized, as runTUI would read it.
+func splitAtRunVerb(args []string) (lead, rest []string, verb bool) {
+	norm := normalizeOptionalResumeArg(args)
+	fs := quietFlagSet(newTUIFlags().fs)
+	newRunFlags().fs.VisitAll(func(f *pflag.Flag) {
+		if fs.Lookup(f.Name) == nil && (f.Shorthand == "" || fs.ShorthandLookup(f.Shorthand) == nil) {
+			fs.AddFlag(f)
+		}
+	})
+	if fs.Parse(norm) != nil {
+		return nil, nil, false
+	}
+	rest = fs.Args()
+	lead = norm[:len(norm)-len(rest)]
+	return lead, rest, len(rest) > 0 && rest[0] == "run" && !slices.Contains(lead, "--")
+}
+
+// leadingFlagsIntoRun moves the flags written before `run` to after it, but
+// only when the session flags (the terminal UI's, plus -y and -p) and run's
+// read every one of them identically; otherwise the line stays the terminal
+// UI's, which reports a flag it does not take.
+func leadingFlagsIntoRun(args []string) ([]string, bool) {
+	if len(args) == 0 || !startsWithSessionFlag(args[0]) {
+		return nil, false
+	}
+	lead, rest, verb := splitAtRunVerb(args)
+	if !verb {
+		return nil, false
+	}
+	session := quietFlagSet(newTUIFlags().fs)
+	session.BoolP("auto", "y", false, "")
+	session.BoolP("print", "p", false, "")
+	run := quietFlagSet(newRunFlags().fs)
+	if session.Parse(lead) != nil || run.Parse(lead) != nil || session.NArg() != 0 || run.NArg() != 0 ||
+		!slices.Equal(setFlagValues(session), setFlagValues(run)) {
+		return nil, false
+	}
+	return append(append([]string{"run"}, lead...), rest[1:]...), true
+}
+
+// flagsBeforeVerb is where a leading -p may be written: a -p after `run`
+// belongs to run itself.
+func flagsBeforeVerb(args []string) []string {
+	if lead, _, verb := splitAtRunVerb(args); verb {
+		return lead
+	}
+	return args
+}
+
+func quietFlagSet(fs *pflag.FlagSet) *pflag.FlagSet {
+	fs.SetInterspersed(false)
+	fs.SetOutput(io.Discard)
+	return fs
+}
+
+// setFlagValues is each set flag with its value: two sets that name the same
+// flags can still disagree on what a token meant, such as a value-optional
+// --resume against one that consumes the next argument.
+func setFlagValues(fs *pflag.FlagSet) []string {
+	var set []string
+	fs.Visit(func(f *pflag.Flag) { set = append(set, f.Name+"="+f.Value.String()) })
+	return set
 }

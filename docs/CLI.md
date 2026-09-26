@@ -145,6 +145,23 @@ structured output format is selected. It also accepts `--model`, `--preset`
 `--continue`, `--resume QUERY`, `--copy`, `--allowed-tools`, `--permission-mode`,
 and `--auto` / `-y` (an alias for `--permission-mode auto`).
 
+`--yolo` / `--dangerously-skip-permissions` also work there, as an alias for
+`--permission-mode bypassPermissions`. Where flags go on a `run` command line:
+
+- Flags may sit anywhere among the task's words: `reasonix run fix --yolo bug`
+  runs the task `fix bug` in bypassPermissions.
+- Flags written before `run` move after it only when both the terminal UI
+  (plus `-y` and `-p`) and `run` take every one of them the same way:
+  `reasonix -y run "task"` is `reasonix run -y "task"`.
+- A terminal-UI-only leading flag (`--inline`, `-r`, `--resume` with no value)
+  sends the whole command line to the terminal UI instead.
+- So does a run-only leading flag (`--output-format`, `--metrics`): the
+  terminal UI then reports it. Write such flags after `run`.
+- A leading `-p` counts only before the verb; a `-p` after `run` is its own.
+- The first word after the leading flags is the verb, as it is with no flags:
+  `reasonix --yolo run the tests` runs `the tests` headless. Quote a prompt that
+  begins with "run" to open the terminal UI with it.
+
 ### Benchmark arms
 
 `--ablate` switches whole subsystems off so a benchmark can attribute a change
@@ -346,8 +363,8 @@ reasonix --allowed-tools "Bash(go test ./...)" --allowed-tools read_file
 | `bypassPermissions` | Bypass approval prompts; equivalent to YOLO. |
 
 For unattended execution with ordinary writer fallback enabled, use
-`reasonix run --auto ...` (or `-y`). The alias cannot be combined with an
-explicit `--permission-mode` value.
+`reasonix run --auto ...` (or `-y`). Neither it nor `--yolo` can be combined
+with an explicit `--permission-mode` value, or with each other.
 
 `[permissions] allow_dynamic_bash = true` is an advanced opt-in that lets an
 Allow fallback, including Auto, cover command/process substitution, dynamic

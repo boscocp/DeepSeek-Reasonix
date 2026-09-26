@@ -257,16 +257,6 @@ func parsePermissionMode(value string) (cliPermissionMode, error) {
 	}
 }
 
-func resolveRunPermissionMode(value string, auto, modeExplicit bool) (string, error) {
-	if !auto {
-		return value, nil
-	}
-	if modeExplicit {
-		return "", errors.New("--auto/-y cannot be combined with --permission-mode")
-	}
-	return "auto", nil
-}
-
 func parseRuntimeProfile(value string) (string, error) {
 	// Accept both --preset balanced|delivery and legacy --profile
 	// economy|full|delivery. Returns dual-write TokenMode values.
@@ -330,74 +320,51 @@ func registerContinueFlag(fs *pflag.FlagSet) *bool {
 
 func runAgent(args []string, version string) int {
 	defer closeCLIUsageCatalogs()
-	fs := pflag.NewFlagSet("run", pflag.ContinueOnError)
-	fs.SetInterspersed(true)
-	model := fs.String("model", "", "provider name (default: config default_model)")
-	profileFlag := fs.String("profile", "", "deprecated: use --preset (economy|balanced|delivery)")
-	presetFlag := fs.String("preset", "balanced", "agent execution setting: light | balanced | delivery")
-	maxSteps := fs.Int("max-steps", 0, "one-off max tool-call rounds (0 = automatic)")
-	showThinking := fs.Bool("show-thinking", false, "show thinking text instead of the collapsed thinking marker")
-	metricsPath := fs.String("metrics", "", "write a JSON token/cache/cost summary of the run to this path")
-	trajectoryPath := fs.String("trajectory", "", "append a timestamped JSONL trajectory of the run's full event stream (tool calls, reasoning, decisions) to this path")
-	ablateFlag, foldIndexFlag := registerArmFlags(fs)
-	dir := fs.String("dir", "", "change to this directory first (project root); config, sandbox and file tools resolve from here")
-	cont := registerContinueFlag(fs)
-	resume := fs.String("resume", "", "resume by session file path, session ID, or machine session ID (takes precedence over --continue)")
-	copySession := fs.Bool("copy", false, "with --resume/--continue: duplicate the session and continue in the copy (escape hatch when the original is held by another Reasonix process)")
-	effort := fs.String("effort", "", "session reasoning effort override")
-	permissionMode := fs.String("permission-mode", "ask", "permission mode: manual | ask | auto | acceptEdits | dontAsk | plan | bypassPermissions")
-	autoApprove := fs.BoolP("auto", "y", false, "explicitly auto-approve ordinary writer fallbacks (alias for --permission-mode auto)")
-	printOnly := fs.BoolP("print", "p", false, "print only the final response")
-	eventsJSONL := fs.Bool("events-jsonl", false, "emit a redacted structured event stream as JSONL")
-	outputFormat := fs.String("output-format", "text", "output format: text | json | stream-json")
-	var additionalDirs []string
-	fs.StringArrayVar(&additionalDirs, "add-dir", nil, "allow tool access to an additional directory (repeatable)")
-	var allowedToolValues []string
-	fs.StringArrayVar(&allowedToolValues, "allowed-tools", nil, "comma or space-separated permission rules to allow")
-	fs.StringArrayVar(&allowedToolValues, "allowedTools", nil, "alias for --allowed-tools")
+	f := newRunFlags()
+	fs := f.fs
 	if code, ok := parseCommandFlags(fs, args); !ok {
 		return code
 	}
-	resolvedPermissionMode, err := resolveRunPermissionMode(*permissionMode, *autoApprove, fs.Changed("permission-mode"))
+	resolvedPermissionMode, err := resolveRunPermissionMode(*f.permissionMode, *f.autoApprove, *f.yolo, fs.Changed("permission-mode"))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 2
 	}
-	*permissionMode = resolvedPermissionMode
-	allowedTools, err := splitAllowedToolRules(allowedToolValues)
+	*f.permissionMode = resolvedPermissionMode
+	allowedTools, err := splitAllowedToolRules(f.allowedToolValues)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 2
 	}
-	format, err := parseRunOutputFormat(*outputFormat)
+	format, err := parseRunOutputFormat(*f.outputFormat)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 2
 	}
-	if *eventsJSONL {
+	if *f.eventsJSONL {
 		if fs.Changed("output-format") {
 			fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, "--events-jsonl cannot be combined with --output-format")
 			return 2
 		}
 		format = runOutputEventsJSONL
 	}
-	profileRaw := strings.TrimSpace(*profileFlag)
+	profileRaw := strings.TrimSpace(*f.profileFlag)
 	if profileRaw != "" {
 		fmt.Fprintln(os.Stderr, "warning: --profile is deprecated; use --preset light|balanced|delivery")
 	} else {
-		profileRaw = strings.TrimSpace(*presetFlag)
+		profileRaw = strings.TrimSpace(*f.presetFlag)
 	}
 	profile, err := parseRuntimeProfile(profileRaw)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 2
 	}
-	ablated, err := ablation.ParseArm(*ablateFlag, *foldIndexFlag)
+	ablated, err := ablation.ParseArm(*f.ablateFlag, *f.foldIndexFlag)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 2
 	}
-	permissions, err := parsePermissionMode(*permissionMode)
+	permissions, err := parsePermissionMode(*f.permissionMode)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 2
@@ -407,10 +374,10 @@ func runAgent(args []string, version string) int {
 		return 2
 	}
 	allowedTools = uniqueStrings(append(allowedTools, permissions.allow...))
-	if rc := chdirTo(*dir); rc != 0 {
+	if rc := chdirTo(*f.dir); rc != 0 {
 		return rc
 	}
-	workspaceRoot, err := workspaceRootForDir(*dir)
+	workspaceRoot, err := workspaceRootForDir(*f.dir)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 1
@@ -439,7 +406,7 @@ func runAgent(args []string, version string) int {
 	// handled before any heavy assembly. --resume takes precedence over
 	// --continue, matching the Resume call below. Accept file paths, branch
 	// IDs, preview text, and opaque machine session IDs (#7429).
-	resumePath := strings.TrimSpace(*resume)
+	resumePath := strings.TrimSpace(*f.resume)
 	if resumePath != "" {
 		resolved, err := resolveSessionQuery(resolveCLISessionDirFor(workspaceRoot), resumePath)
 		if err != nil {
@@ -448,7 +415,7 @@ func runAgent(args []string, version string) int {
 		}
 		resumePath = resolved
 	}
-	if resumePath == "" && *cont {
+	if resumePath == "" && *f.cont {
 		sessionDir := resolveCLISessionDirFor(workspaceRoot)
 		reclaimCLIRecoveryBranches(sessionDir)
 		session, ok := mostRecentSession(sessionDir)
@@ -458,11 +425,11 @@ func runAgent(args []string, version string) int {
 			resumePath = session.Path
 		}
 	}
-	if *copySession && resumePath == "" {
+	if *f.copySession && resumePath == "" {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, "--copy requires --resume or --continue")
 		return 2
 	}
-	if *copySession {
+	if *f.copySession {
 		copied, err := copySessionForWriting(resumePath)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
@@ -471,17 +438,17 @@ func runAgent(args []string, version string) int {
 		// Keep structured (json/stream-json) and --print stdout a single
 		// machine-readable payload: the human copy notice goes to stderr there.
 		// Plain text runs keep it on stdout, where callers scrape the copied path.
-		if format == runOutputText && !*printOnly {
+		if format == runOutputText && !*f.printOnly {
 			fmt.Printf("continuing in a session copy: %s\n", copied)
 		} else {
 			fmt.Fprintf(os.Stderr, "continuing in a session copy: %s\n", copied)
 		}
 		resumePath = copied
 	}
-	sessionMode := cliTelemetrySessionMode(resumePath != "", strings.TrimSpace(*resume) != "", *copySession)
+	sessionMode := cliTelemetrySessionMode(resumePath != "", strings.TrimSpace(*f.resume) != "", *f.copySession)
 	reporter := startCLITelemetry(cfg, telemetry.Options{
 		Version: version, Interactive: false, CLIMode: "run", Profile: profile,
-		PermissionMode: *permissionMode, SessionMode: sessionMode,
+		PermissionMode: *f.permissionMode, SessionMode: sessionMode,
 	})
 
 	// Own the session file for the lifetime of this run so a desktop window (or
@@ -511,18 +478,18 @@ func runAgent(args []string, version string) int {
 	defer stop()
 	started := time.Now()
 
-	chain, err := buildRunSink(format, *printOnly, *showThinking, *metricsPath, *trajectoryPath, cfg, reporter)
+	chain, err := buildRunSink(format, *f.printOnly, *f.showThinking, *f.metricsPath, *f.trajectoryPath, cfg, reporter)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 1
 	}
 	sink, resultOutput, metrics := chain.sink, chain.resultOutput, chain.metrics
 	if resumePath != "" {
-		*model = modelForResumePath(*model, resumePath, cfg)
+		*f.model = modelForResumePath(*f.model, resumePath, cfg)
 	}
 	var effortOverride *string
-	if strings.TrimSpace(*effort) != "" {
-		effortOverride = effort
+	if strings.TrimSpace(*f.effort) != "" {
+		effortOverride = f.effort
 	}
 	// `reasonix run` is headless: there is no key loop to answer approval or ask
 	// prompts, and the approval timeout defaults to infinite. Installing the
@@ -534,10 +501,10 @@ func runAgent(args []string, version string) int {
 	// executor, not just the top-level one. Default/ask fails closed because no
 	// UI can answer; unattended writes require explicit --auto/-y,
 	// --permission-mode auto, or yolo.
-	overrides := runBuildOverrides(effortOverride, allowedTools, additionalDirs, workspaceRoot,
+	overrides := runBuildOverrides(effortOverride, allowedTools, f.additionalDirs, workspaceRoot,
 		permissions.approval, cliSessionRecoveredHandler(leases), ablated)
 	overrides.Version = version
-	ctrl, err := setupProfileWithOverrides(ctx, *model, *maxSteps, true, sink, profile, overrides)
+	ctrl, err := setupProfileWithOverrides(ctx, *f.model, *f.maxSteps, true, sink, profile, overrides)
 	if err != nil {
 		if resultOutput != nil && format != runOutputText {
 			if encodeErr := resultOutput.Finalize("", started, err); encodeErr != nil {
@@ -590,7 +557,7 @@ func runAgent(args []string, version string) int {
 				)
 			}
 		}
-		if err := writeMetrics(*metricsPath, final); err != nil {
+		if err := writeMetrics(*f.metricsPath, final); err != nil {
 			fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		}
 	}
@@ -1321,10 +1288,10 @@ func readStdin() string {
 	return strings.TrimSpace(string(data))
 }
 
-// normalizeCommand names the subcommand argv asks for. -p/--print is one-shot
-// print mode and reasonix has no interactive -p, so a print flag anywhere in a
-// leading flag run routes the whole set to `run --print`: `reasonix --model X
-// -p "task"` works, not only `reasonix -p ...`. Other leading flags name none.
+// normalizeCommand names the subcommand argv asks for. Flags written before
+// `run` move after it only when the session flags and run's accept them
+// identically. A -p among the leading flags, up to the verb, is one-shot print
+// mode and routes the line to `run --print`; a -p after the verb is run's own.
 func normalizeCommand(args []string) (string, []string) {
 	cmd := ""
 	if len(args) > 0 {
@@ -1333,7 +1300,10 @@ func normalizeCommand(args []string) (string, []string) {
 	if cmd == "--acp" {
 		cmd = "acp"
 	}
-	if cmd == "-p" || cmd == "--print" || (isDefaultInteractiveFlag(cmd) && hasLeadingPrintFlag(args)) {
+	if routed, ok := leadingFlagsIntoRun(args); ok {
+		return "run", routed
+	}
+	if cmd == "-p" || cmd == "--print" || (startsWithSessionFlag(cmd) && hasLeadingPrintFlag(flagsBeforeVerb(args))) {
 		return "run", append([]string{"run", "--print"}, stripLeadingPrintFlag(args)...)
 	}
 	if len(args) > 0 && isDefaultInteractiveFlag(cmd) {

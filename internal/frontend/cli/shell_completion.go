@@ -96,7 +96,7 @@ func cliCompletionRootSpec() cliCompletionSpec {
 		runResume,
 		completionFlag("--copy", cliCompletionNoValue),
 		effort, permissionMode,
-		completionFlag("--auto -y", cliCompletionNoValue),
+		completionFlag("--auto -y", cliCompletionNoValue), completionFlag("--dangerously-skip-permissions --yolo", cliCompletionNoValue),
 		completionFlag("--print -p", cliCompletionNoValue),
 		completionFlag("--events-jsonl", cliCompletionNoValue),
 		completionFlag("--output-format", cliCompletionStaticValue, "text", "json", "stream-json"),
