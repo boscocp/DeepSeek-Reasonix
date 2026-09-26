@@ -12,6 +12,7 @@ import (
 
 	"reasonix/internal/base/diff"
 	fileenc "reasonix/internal/base/fileutil/encoding"
+	"reasonix/internal/base/fileutil/encoding/encodingtest"
 	"reasonix/internal/base/testenv"
 )
 
@@ -97,7 +98,7 @@ func TestRestorePreservesGB18030Encoding(t *testing.T) {
 	a := filepath.Join(root, "gbk.txt")
 	original := "\u4f60\u597d\n\u65e7\u884c\n"
 	edited := "\u4f60\u597d\n\u65b0\u884c\n"
-	originalRaw := fileenc.Encode(original, fileenc.GB18030)
+	originalRaw := encodingtest.MustEncode(original, fileenc.GB18030)
 	if err := os.WriteFile(a, originalRaw, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +106,7 @@ func TestRestorePreservesGB18030Encoding(t *testing.T) {
 	s := New("", root)
 	s.Begin(0, "edit gbk", 0)
 	s.Snapshot(diff.Change{Path: a, Kind: diff.Modify, OldText: original})
-	if err := os.WriteFile(a, fileenc.Encode(edited, fileenc.GB18030), 0o644); err != nil {
+	if err := os.WriteFile(a, encodingtest.MustEncode(edited, fileenc.GB18030), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -127,7 +128,7 @@ func TestRestorePreservesGB18030EncodingAfterPersistence(t *testing.T) {
 	a := filepath.Join(root, "gbk.txt")
 	original := "\u4f60\u597d\n\u65e7\u884c\n"
 	edited := "\u4f60\u597d\n\u65b0\u884c\n"
-	originalRaw := fileenc.Encode(original, fileenc.GB18030)
+	originalRaw := encodingtest.MustEncode(original, fileenc.GB18030)
 	if err := os.WriteFile(a, originalRaw, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +138,7 @@ func TestRestorePreservesGB18030EncodingAfterPersistence(t *testing.T) {
 	s.Snapshot(diff.Change{Path: a, Kind: diff.Modify, OldText: original})
 
 	resumed := New(dir, root)
-	if err := os.WriteFile(a, fileenc.Encode(edited, fileenc.GB18030), 0o644); err != nil {
+	if err := os.WriteFile(a, encodingtest.MustEncode(edited, fileenc.GB18030), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := resumed.RestoreCode(0); err != nil {
@@ -157,7 +158,7 @@ func TestRestoreLegacySnapshotRequiresExplicitSafePath(t *testing.T) {
 	a := filepath.Join(root, "gbk.txt")
 	original := "\u4f60\u597d\n\u65e7\u884c\n"
 	edited := "\u4f60\u597d\n\u65b0\u884c\n"
-	if err := os.WriteFile(a, fileenc.Encode(edited, fileenc.GB18030), 0o644); err != nil {
+	if err := os.WriteFile(a, encodingtest.MustEncode(edited, fileenc.GB18030), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -498,8 +499,8 @@ func BenchmarkRestoreGB18030Encoding(b *testing.B) {
 	a := filepath.Join(root, "gbk.txt")
 	original := strings.Repeat("\u4f60\u597d\u4e16\u754c\n\u65e7\u884c\n", 8192)
 	edited := strings.Repeat("\u4f60\u597d\u4e16\u754c\n\u65b0\u884c\n", 8192)
-	originalRaw := fileenc.Encode(original, fileenc.GB18030)
-	editedRaw := fileenc.Encode(edited, fileenc.GB18030)
+	originalRaw := encodingtest.MustEncode(original, fileenc.GB18030)
+	editedRaw := encodingtest.MustEncode(edited, fileenc.GB18030)
 	if err := os.WriteFile(a, originalRaw, 0o644); err != nil {
 		b.Fatal(err)
 	}

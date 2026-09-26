@@ -10,6 +10,7 @@ import (
 	"time"
 
 	fileencoding "reasonix/internal/base/fileutil/encoding"
+	"reasonix/internal/base/fileutil/encoding/encodingtest"
 	"reasonix/internal/base/testenv"
 )
 
@@ -60,7 +61,7 @@ func TestLoadMCPJSONDecodesGB18030(t *testing.T) {
 	dir := testenv.TempDir(t)
 	path := filepath.Join(dir, mcpJSONFile)
 	doc := `{"mcpServers":{"local":{"command":"工具.exe","env":{"LABEL":"中文"}}}}`
-	if err := os.WriteFile(path, fileencoding.Encode(doc, fileencoding.GB18030), 0o644); err != nil {
+	if err := os.WriteFile(path, encodingtest.MustEncode(doc, fileencoding.GB18030), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

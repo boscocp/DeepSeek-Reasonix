@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	fileencoding "reasonix/internal/base/fileutil/encoding"
+	"reasonix/internal/base/fileutil/encoding/encodingtest"
 	"reasonix/internal/base/testenv"
 )
 
@@ -356,7 +357,7 @@ func TestResolveSystemPromptForRootDecodesGB18030(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "prompts", "session.md")
-	if err := os.WriteFile(path, fileencoding.Encode(" 请始终使用中文回答。 \n", fileencoding.GB18030), 0o644); err != nil {
+	if err := os.WriteFile(path, encodingtest.MustEncode(" 请始终使用中文回答。 \n", fileencoding.GB18030), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

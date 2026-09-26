@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	fileencoding "reasonix/internal/base/fileutil/encoding"
+	"reasonix/internal/base/fileutil/encoding/encodingtest"
 	"reasonix/internal/base/testenv"
 )
 
@@ -73,7 +74,7 @@ func TestLoadDecodesGB18030CommandFile(t *testing.T) {
 	dir := testenv.TempDir(t)
 	body := "---\ndescription: 中文命令\nargument-hint: [主题]\n---\n请总结 $ARGUMENTS。"
 	path := filepath.Join(dir, "summary.md")
-	if err := os.WriteFile(path, fileencoding.Encode(body, fileencoding.GB18030), 0o644); err != nil {
+	if err := os.WriteFile(path, encodingtest.MustEncode(body, fileencoding.GB18030), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

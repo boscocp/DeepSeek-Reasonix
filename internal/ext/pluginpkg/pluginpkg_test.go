@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	fileencoding "reasonix/internal/base/fileutil/encoding"
+	"reasonix/internal/base/fileutil/encoding/encodingtest"
 	"reasonix/internal/base/testenv"
 )
 
@@ -52,7 +53,7 @@ func TestParseDirDecodesGB18030Manifest(t *testing.T) {
 	root := testenv.TempDir(t)
 	manifest := `{"apiVersion":"reasonix.io/plugin/v2","name":"cn-plugin","version":"1.0.0","description":"中文插件"}`
 	path := filepath.Join(root, NativeManifest)
-	if err := os.WriteFile(path, fileencoding.Encode(manifest, fileencoding.GB18030), 0o644); err != nil {
+	if err := os.WriteFile(path, encodingtest.MustEncode(manifest, fileencoding.GB18030), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

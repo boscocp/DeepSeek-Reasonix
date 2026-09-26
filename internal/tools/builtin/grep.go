@@ -241,10 +241,14 @@ func (g grepTool) nativePass(ctx context.Context, pattern, path, glob string, in
 			}
 		}
 
-		// Minus any character the fixed window cut in half: that byte alone
-		// fails utf8.Valid, and GB18030 then wins for a UTF-8 file. The rest
-		// streams through a decoder so the match cap can stop reading early.
-		enc, _ := fileenc.Detect(fileenc.TrimPartialRune(peek))
+		// A full peek is only the start of the file and can end inside a
+		// character. The rest streams through a decoder so the match cap can
+		// stop reading early.
+		detect := fileenc.Detect
+		if n == len(peekBuf) {
+			detect = fileenc.DetectFragment
+		}
+		enc, _ := detect(peek)
 
 		var src io.Reader
 		if enc == fileenc.UTF16LE || enc == fileenc.UTF16BE {

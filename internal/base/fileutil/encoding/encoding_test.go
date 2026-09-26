@@ -65,6 +65,19 @@ func TestDetectGB18030(t *testing.T) {
 	}
 }
 
+// The GB18030 decoder accepts any bytes, mapping invalid ones to U+FFFD, so a
+// UTF-8 file with one stray byte must not be taken for GB18030: re-encoding it
+// would rewrite every character the decoder could not read.
+func TestDetectUTF8WithStrayByteIsNotGB18030(t *testing.T) {
+	data := []byte("// 中文注释\nvalue := 1\n\xff\n")
+	if enc, _ := Detect(data); enc != LossyUTF8 {
+		t.Fatalf("got %v, want LossyUTF8", enc)
+	}
+	if out := mustEncode(string(Decode(data, LossyUTF8)), LossyUTF8); !bytes.Equal(out, data) {
+		t.Fatalf("LossyUTF8 round trip changed bytes: % x", out)
+	}
+}
+
 func TestDetectEmpty(t *testing.T) {
 	enc, _ := Detect(nil)
 	if enc != UTF8 {
@@ -84,7 +97,7 @@ func TestDecodeUTF8(t *testing.T) {
 
 func TestReadFileUTF8DecodesGB18030(t *testing.T) {
 	path := filepath.Join(testenv.TempDir(t), "settings.json")
-	if err := os.WriteFile(path, Encode(`{"label":"中文"}`, GB18030), 0o644); err != nil {
+	if err := os.WriteFile(path, mustEncode(`{"label":"中文"}`, GB18030), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	got, err := ReadFileUTF8(path)
@@ -150,14 +163,14 @@ func TestDecodeLossyUTF8(t *testing.T) {
 // Encode
 
 func TestEncodeUTF8(t *testing.T) {
-	out := Encode("hello", UTF8)
+	out := mustEncode("hello", UTF8)
 	if string(out) != "hello" {
 		t.Errorf("got %q", out)
 	}
 }
 
 func TestEncodeUTF8BOM(t *testing.T) {
-	out := Encode("hello", UTF8BOM)
+	out := mustEncode("hello", UTF8BOM)
 	if !bytes.HasPrefix(out, []byte{0xEF, 0xBB, 0xBF}) {
 		t.Error("missing UTF-8 BOM prefix")
 	}
@@ -167,7 +180,7 @@ func TestEncodeUTF8BOM(t *testing.T) {
 }
 
 func TestEncodeUTF16LE(t *testing.T) {
-	out := Encode("hi", UTF16LE)
+	out := mustEncode("hi", UTF16LE)
 	if len(out) < 2 || out[0] != 0xFF || out[1] != 0xFE {
 		t.Error("missing UTF-16LE BOM")
 	}
@@ -178,7 +191,7 @@ func TestEncodeUTF16LE(t *testing.T) {
 }
 
 func TestEncodeUTF16BE(t *testing.T) {
-	out := Encode("hi", UTF16BE)
+	out := mustEncode("hi", UTF16BE)
 	if len(out) < 2 || out[0] != 0xFE || out[1] != 0xFF {
 		t.Error("missing UTF-16BE BOM")
 	}
@@ -189,7 +202,7 @@ func TestEncodeUTF16BE(t *testing.T) {
 }
 
 func TestEncodeGB18030(t *testing.T) {
-	out := Encode("你好", GB18030)
+	out := mustEncode("你好", GB18030)
 	dec, _ := simplifiedchinese.GB18030.NewDecoder().Bytes(out)
 	if string(dec) != "你好" {
 		t.Errorf("round-trip failed: got %q", dec)
@@ -209,7 +222,7 @@ func TestRoundTripGB18030(t *testing.T) {
 	}
 
 	edited := strings.Replace(decoded, "第二行", "新的行", 1)
-	reencoded := Encode(edited, enc)
+	reencoded := mustEncode(edited, enc)
 	redecoded := string(Decode(reencoded, enc))
 	if redecoded != edited {
 		t.Errorf("round-trip failed: got %q, want %q", redecoded, edited)
@@ -218,7 +231,7 @@ func TestRoundTripGB18030(t *testing.T) {
 
 func TestRoundTripUTF16LE(t *testing.T) {
 	original := "hello\nworld\n"
-	encoded := Encode(original, UTF16LE)
+	encoded := mustEncode(original, UTF16LE)
 	enc, _ := Detect(encoded)
 	decoded := string(Decode(encoded, enc))
 	if decoded != original {
@@ -228,7 +241,7 @@ func TestRoundTripUTF16LE(t *testing.T) {
 
 func TestRoundTripUTF8BOM(t *testing.T) {
 	original := "hello world\n"
-	encoded := Encode(original, UTF8BOM)
+	encoded := mustEncode(original, UTF8BOM)
 	enc, _ := Detect(encoded)
 	decoded := string(Decode(encoded, enc))
 	if decoded != original {
@@ -298,7 +311,7 @@ func TestRoundTripUTF16LENoBOM(t *testing.T) {
 		t.Fatalf("decode mismatch: %q", decoded)
 	}
 	edited := strings.Replace(decoded, "return 0", "return 1", 1)
-	reencoded := Encode(edited, enc)
+	reencoded := mustEncode(edited, enc)
 	if bytes.HasPrefix(reencoded, []byte{0xFF, 0xFE}) || bytes.HasPrefix(reencoded, []byte{0xFE, 0xFF}) {
 		t.Error("no-BOM re-encode leaked a BOM")
 	}
@@ -312,7 +325,7 @@ func TestRoundTripUTF16LENoBOM(t *testing.T) {
 func TestSurrogatePairRoundTrip(t *testing.T) {
 	// U+1F600 (😀) is in the supplementary plane and requires a surrogate pair.
 	original := "hello 😀 world"
-	encoded := Encode(original, UTF16LE)
+	encoded := mustEncode(original, UTF16LE)
 	decoded := string(Decode(encoded, UTF16LE))
 	if decoded != original {
 		t.Errorf("surrogate pair round-trip failed: got %q, want %q", decoded, original)
