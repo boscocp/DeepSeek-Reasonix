@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"os"
 	"strings"
 	"time"
 
@@ -30,6 +31,8 @@ type Options struct {
 	// Inline writes the conversation into the terminal's own scrollback
 	// instead of taking the full screen.
 	Inline bool
+	// HideTurnUsage keeps each request's token and cost receipt off the transcript.
+	HideTurnUsage bool
 }
 
 // Run drives the terminal until the user quits or ctx ends.
@@ -82,6 +85,7 @@ type model struct {
 	// frameRows is how tall the last inline frame was: a print has only the
 	// rows above it to land in.
 	frameRows int
+	glyphs    *glyphFit // console-measured stand-ins for runes drawn wider than counted
 }
 
 type (
@@ -127,6 +131,7 @@ func newModel(ctx context.Context, opts Options) *model {
 		ctx: ctx, client: opts.Client, opts: opts,
 		committed: map[int]bool{}, sayShown: map[int]int{},
 		composer: ta, width: 80, height: 24,
+		glyphs: newConsoleGlyphFit(os.Stdout),
 	}
 	if !opts.Inline {
 		m.scr = &screen{follow: true, mouseOff: mouseCaptureOffByDefault()}
@@ -346,6 +351,10 @@ func (m *model) commit() tea.Cmd {
 		if it.Kind == ItemUser && it.Pending {
 			continue
 		}
+		if m.hidden(it) {
+			m.committed[it.ID] = true
+			continue
+		}
 		if it.Kind == ItemSay && !it.Done {
 			if chunk := m.settledChunk(it); chunk != nil {
 				out = append(out, settledPrint{render: chunk})
@@ -359,6 +368,12 @@ func (m *model) commit() tea.Cmd {
 		out = append(out, m.settledRow(*it, m.sayShown[it.ID]))
 	}
 	return m.publish(out)
+}
+
+// hidden is a row the configuration keeps off the screen. It still folds into
+// the transcript: a later frame of the same request restates it in place.
+func (m *model) hidden(it *Item) bool {
+	return it.Kind == ItemUsage && m.opts.HideTurnUsage
 }
 
 // settledChunk draws the part of a streaming answer that has become final

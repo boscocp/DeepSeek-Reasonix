@@ -142,7 +142,7 @@ func (m *model) onKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 // shortcutKey takes the keys that act without touching the composer: the
-// approval modes and the clipboard's image.
+// approval modes and the clipboard.
 func (m *model) shortcutKey(k string) (tea.Cmd, bool) {
 	switch {
 	case k == "shift+tab":
@@ -151,6 +151,8 @@ func (m *model) shortcutKey(k string) (tea.Cmd, bool) {
 		return m.toggleYolo(), true
 	case imagePasteKey(k):
 		return m.pasteClipboard(), true
+	case k == "shift+insert":
+		return m.pasteClipboardText(), true
 	}
 	return nil, false
 }
@@ -225,7 +227,11 @@ func (m *model) send(steer bool) tea.Cmd {
 		return m.openPicker()
 	case display == "/version":
 		m.composer.Reset()
-		m.tr.AddNotice("info", "reasonix "+m.opts.Version)
+		version := m.opts.Version
+		if version == "" {
+			version = "dev"
+		}
+		m.tr.AddNotice("info", "reasonix "+version)
 		return m.commit()
 	}
 	text := m.pastes.expand(display)

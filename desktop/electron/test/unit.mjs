@@ -124,6 +124,109 @@ test("an unreachable kernel is an answer, not a crash", async () => {
   assert.equal(await dead.trayState(), null);
 });
 
+const { reveal } = require("../src/reveal.js");
+
+// A kernel that answers /workspace/locate as the test says, and a shell that
+// only records what it was asked to open.
+async function revealRig(answer, platform = process.platform) {
+  const asked = [];
+  const server = http.createServer((req, res) => {
+    asked.push(req.url);
+    const [status, body] = answer(new URL(req.url, "http://k"));
+    res.writeHead(status, { "content-type": "application/json" });
+    res.end(JSON.stringify(body));
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const client = new StudioHost(`http://127.0.0.1:${server.address().port}`, "the-launch-credential");
+  const opened = [];
+  const shell = {
+    openPath: async (p) => (opened.push(["open", p]), ""),
+    showItemInFolder: (p) => opened.push(["select", p]),
+  };
+  return { asked, opened, run: (base, rel) => reveal(client, shell, base, rel, platform), close: () => server.close() };
+}
+
+const ROOT = path.resolve(os.tmpdir(), "rx-workspace");
+
+test("reveal opens only what the kernel located inside the pane's workspace", async () => {
+  const rig = await revealRig((url) => {
+    const rel = url.searchParams.get("path") ?? "";
+    if (url.pathname !== "/rt/r2/workspace/locate") return [404, { code: "", error: "no route" }];
+    if (rel.startsWith("..")) return [400, { code: "workspace.path_outside_tree", error: "outside" }];
+    return [200, { path: path.join(ROOT, ...rel.split("/").filter(Boolean)), dir: !rel.includes(".") }];
+  });
+  try {
+    assert.equal(await rig.run("/rt/r2", ""), null);
+    assert.equal(await rig.run("/rt/r2", "out/report 1.html"), null);
+    assert.equal(await rig.run("/rt/r2", "out/t620"), null);
+    const outside = await rig.run("/rt/r2", "../etc");
+    assert.equal(outside.code, "workspace.path_outside_tree");
+    // Every entry, the root included, is selected in its folder and never opened.
+    assert.deepEqual(rig.opened, [
+      ["select", ROOT],
+      ["select", path.join(ROOT, "out", "report 1.html")],
+      ["select", path.join(ROOT, "out", "t620")],
+    ]);
+    assert.equal(rig.asked[1], "/rt/r2/workspace/locate?path=out%2Freport%201.html");
+  } finally {
+    rig.close();
+  }
+});
+
+test("the page cannot steer reveal to a location the kernel did not name", async () => {
+  const rig = await revealRig((url) =>
+    url.searchParams.get("path") === "rel"
+      ? [200, { path: "relative/answer", dir: false }]
+      : [200, { path: path.join(ROOT, "a.exe"), dir: false }],
+  );
+  try {
+    for (const base of ["", "/etc", "http://evil.test", "/rt/r1/../../x", "/rt/r1/workspace/file?path=", "rt/r1"]) {
+      const why = await rig.run(base, "");
+      assert.ok(why && typeof why.error === "string", `accepted base ${base}`);
+    }
+    assert.deepEqual(rig.asked, [], "a refused base still reached the kernel");
+    assert.ok(await rig.run("/rt/r1", "rel"), "a relative answer was opened");
+    // A root answered as a file is still only selected: openPath would run it.
+    assert.equal(await rig.run("/rt/r1", ""), null);
+    assert.deepEqual(rig.opened, [["select", path.join(ROOT, "a.exe")]]);
+  } finally {
+    rig.close();
+  }
+});
+
+// A root that is an .app bundle, or a link to one, is a directory to stat and
+// an application to `open`: handing it to openPath would launch it.
+test("the workspace root is selected, never opened", async () => {
+  const rig = await revealRig(() => [200, { path: path.join(ROOT, "Probe.app"), dir: true }]);
+  try {
+    assert.equal(await rig.run("/rt/r1", ""), null);
+    assert.deepEqual(rig.opened, [["select", path.join(ROOT, "Probe.app")]]);
+  } finally {
+    rig.close();
+  }
+});
+
+// A remote kernel's answer can name a share or a device on this machine; on
+// Windows the shell would reach out to it just to select it.
+test("on Windows a share or device path from the kernel is refused", async () => {
+  const answers = ["\\\\attacker\\share\\x", "//attacker/share/x", "\\\\?\\C:\\x", "\\\\.\\pipe\\x", "C:relative", "\\??\\UNC\\attacker\\share\\x", "\\??\\C:\\x", "\\Windows\\x"];
+  let i = 0;
+  const rig = await revealRig(() => [200, { path: answers[i++], dir: false }], "win32");
+  try {
+    for (const answer of answers) {
+      const why = await rig.run("/rt/r1", "x");
+      assert.ok(why && typeof why.error === "string", `opened ${answer}`);
+    }
+    assert.deepEqual(rig.opened, []);
+    i = 0;
+    answers[0] = "C:\\work\\out\\x";
+    assert.equal(await rig.run("/rt/r1", "x"), null);
+    assert.deepEqual(rig.opened, [["select", "C:\\work\\out\\x"]]);
+  } finally {
+    rig.close();
+  }
+});
+
 const { hostBinary, computerHelper, pageDir } = require("../src/layout.js");
 
 // Packaged, both live in resources/ beside app.asar. Reading them from inside
@@ -573,4 +676,156 @@ test("only the Studio window reads or writes the preferences", () => {
   ask("prefs:save", "studio", { "rx-theme": "light" });
   assert.deepEqual(loadPrefs(file), { "rx-theme": "light" });
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+function elf64(interpreter) {
+  const phoff = 64, phentsize = 56, phnum = interpreter ? 2 : 1;
+  const dataOffset = phoff + phnum * phentsize;
+  const path = Buffer.from(interpreter ? `${interpreter}\0` : "", "latin1");
+  const bytes = Buffer.alloc(dataOffset + path.length);
+  bytes.writeUInt32BE(0x7f454c46, 0);
+  bytes[4] = 2;
+  bytes[5] = 1;
+  bytes[6] = 1;
+  bytes.writeUInt16LE(2, 16);
+  bytes.writeUInt16LE(62, 18);
+  bytes.writeBigUInt64LE(BigInt(phoff), 32);
+  bytes.writeUInt16LE(64, 52);
+  bytes.writeUInt16LE(phentsize, 54);
+  bytes.writeUInt16LE(phnum, 56);
+  bytes.writeUInt32LE(1, phoff);
+  if (interpreter) {
+    const header = phoff + phentsize;
+    bytes.writeUInt32LE(3, header);
+    bytes.writeBigUInt64LE(BigInt(dataOffset), header + 8);
+    bytes.writeBigUInt64LE(BigInt(path.length), header + 32);
+    path.copy(bytes, dataOffset);
+  }
+  return bytes;
+}
+
+test("a Linux Go binary that needs the build host's dynamic loader is refused", () => {
+  const { elfInterpreter, dynamicallyLinked } = require("../packaging/elf.js");
+  assert.equal(elfInterpreter(elf64("/lib64/ld-linux-x86-64.so.2")), "/lib64/ld-linux-x86-64.so.2");
+  assert.equal(elfInterpreter(elf64(null)), null);
+  assert.throws(() => elfInterpreter(Buffer.from("#!/bin/sh\n")), /not an ELF/);
+  assert.throws(() => elfInterpreter(elf64("/lib/ld.so").subarray(0, 100)), /truncated/);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "reasonix-elf-"));
+  try {
+    const host = path.join(dir, "reasonix-studio-host");
+    const helper = path.join(dir, "reasonix-studio-update-helper");
+    fs.writeFileSync(host, elf64("/lib64/ld-linux-x86-64.so.2"));
+    fs.writeFileSync(helper, elf64(null));
+    assert.deepEqual(dynamicallyLinked([host, helper]), [{ file: host, interpreter: "/lib64/ld-linux-x86-64.so.2" }]);
+    assert.deepEqual(dynamicallyLinked([helper]), []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a Wayland session with XWayland relaunches the shell on X11 before anything else starts", () => {
+  const { relaunchForOzonePlatform } = require("../src/ozone.js");
+  const X11 = "--ozone-platform=x11";
+  const cases = [
+    ["wayland with xwayland", { XDG_SESSION_TYPE: "wayland", WAYLAND_DISPLAY: "wayland-0", DISPLAY: ":0" }, ["--flag"], [X11, "--flag"]],
+    ["wayland display alone", { WAYLAND_DISPLAY: "wayland-0", DISPLAY: ":0" }, [], [X11]],
+    ["pure wayland", { XDG_SESSION_TYPE: "wayland", WAYLAND_DISPLAY: "wayland-0" }, ["--flag"], null],
+    ["override wayland", { XDG_SESSION_TYPE: "wayland", DISPLAY: ":0", REASONIX_OZONE_PLATFORM: "wayland" }, [], null],
+    ["override x11", { XDG_SESSION_TYPE: "x11", DISPLAY: ":0", REASONIX_OZONE_PLATFORM: "x11" }, [], [X11]],
+    ["override auto", { XDG_SESSION_TYPE: "wayland", DISPLAY: ":0", REASONIX_OZONE_PLATFORM: "auto" }, [], [X11]],
+    ["explicit flag", { XDG_SESSION_TYPE: "wayland", DISPLAY: ":0" }, ["--ozone-platform=wayland"], null],
+    ["explicit hint", { XDG_SESSION_TYPE: "wayland", DISPLAY: ":0" }, ["--ozone-platform-hint=wayland"], null],
+    ["already relaunched", { XDG_SESSION_TYPE: "wayland", DISPLAY: ":0" }, [X11, "--flag"], null],
+    ["x11 session", { XDG_SESSION_TYPE: "x11", DISPLAY: ":0" }, ["--flag"], null],
+  ];
+  for (const [why, env, args, want] of cases) {
+    const calls = [];
+    const app = { relaunch: (opts) => calls.push(["relaunch", opts.args]), exit: (code) => calls.push(["exit", code]) };
+    const relaunched = relaunchForOzonePlatform(app, { platform: "linux", env, argv: ["/opt/Reasonix Studio/reasonix-studio", ...args] });
+    if (want === null) {
+      assert.equal(relaunched, false, why);
+      assert.deepEqual(calls, [], why);
+    } else {
+      assert.equal(relaunched, true, why);
+      assert.deepEqual(calls, [["relaunch", want], ["exit", 0]], why);
+    }
+  }
+  const calls = [];
+  const app = { relaunch: () => calls.push("relaunch"), exit: () => calls.push("exit") };
+  for (const platform of ["darwin", "win32"]) {
+    assert.equal(relaunchForOzonePlatform(app, { platform, env: { XDG_SESSION_TYPE: "wayland", DISPLAY: ":0" }, argv: ["x"] }), false);
+  }
+  assert.deepEqual(calls, []);
+});
+
+test("the shell leaves for its X11 relaunch before it claims the instance lock", () => {
+  const Module = require("node:module");
+  const calls = [];
+  const inert = new Proxy(function () {}, { get: (_t, key) => (key === "then" ? undefined : inert), apply: () => inert });
+  const app = new Proxy({}, {
+    get: (_t, key) => {
+      if (key === "relaunch") return (opts) => calls.push(["relaunch", opts?.args]);
+      if (key === "exit") return (code) => calls.push(["exit", code]);
+      if (key === "requestSingleInstanceLock") return () => (calls.push(["lock"]), false);
+      if (key === "whenReady") return () => new Promise(() => {});
+      if (key === "getPath") return () => os.tmpdir();
+      if (key === "isPackaged") return false;
+      return inert;
+    },
+  });
+  const fake = new Proxy({ app }, { get: (t, key) => t[key] ?? inert });
+  const load = Module._load;
+  const platform = Object.getOwnPropertyDescriptor(process, "platform");
+  const saved = { XDG_SESSION_TYPE: process.env.XDG_SESSION_TYPE, DISPLAY: process.env.DISPLAY, REASONIX_OZONE_PLATFORM: process.env.REASONIX_OZONE_PLATFORM };
+  const main = require.resolve("../src/main.js");
+  Module._load = function (request, ...rest) {
+    return request === "electron" ? fake : load.call(this, request, ...rest);
+  };
+  Object.defineProperty(process, "platform", { value: "linux" });
+  Object.assign(process.env, { XDG_SESSION_TYPE: "wayland", DISPLAY: ":0" });
+  delete process.env.REASONIX_OZONE_PLATFORM;
+  try {
+    delete require.cache[main];
+    require(main);
+  } finally {
+    Module._load = load;
+    Object.defineProperty(process, "platform", platform);
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    delete require.cache[main];
+  }
+  assert.deepEqual(calls, [["relaunch", ["--ozone-platform=x11", ...process.argv.slice(1)]], ["exit", 0]]);
+});
+
+test("F11 toggles full screen where no application menu binds it", () => {
+  const { installFullScreenKey } = require("../src/fullscreen.js");
+  const press = (over) => ({ type: "keyDown", key: "F11", control: false, alt: false, shift: false, meta: false, isAutoRepeat: false, ...over });
+  const rig = (platform) => {
+    let handler = null;
+    const state = { full: false, prevented: 0 };
+    const contents = { on: (name, fn) => { if (name === "before-input-event") handler = fn; } };
+    const window = { isFullScreen: () => state.full, setFullScreen: (v) => { state.full = v; } };
+    installFullScreenKey(contents, window, platform);
+    const send = (input) => handler?.({ preventDefault: () => { state.prevented += 1; } }, input);
+    return { state, send, bound: () => handler !== null };
+  };
+
+  for (const platform of ["linux", "win32"]) {
+    const { state, send } = rig(platform);
+    send(press());
+    assert.equal(state.full, true, `${platform}: F11 did not enter full screen`);
+    send(press({ type: "keyUp" }));
+    send(press({ isAutoRepeat: true }));
+    send(press({ control: true }));
+    send(press({ key: "F10" }));
+    assert.equal(state.full, true, `${platform}: something other than a fresh F11 press toggled`);
+    send(press());
+    assert.equal(state.full, false, `${platform}: F11 did not leave full screen`);
+    assert.equal(state.prevented, 2);
+  }
+  // macOS keeps its own full-screen control on the window menu and title bar.
+  assert.equal(rig("darwin").bound(), false);
 });

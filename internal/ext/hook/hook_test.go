@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -103,6 +104,21 @@ func TestLoadProjectHooksByDefault(t *testing.T) {
 	}
 	if got[0].Scope != ScopeProject {
 		t.Errorf("project hooks should sort first, got %s", got[0].Scope)
+	}
+}
+
+func TestLoadUserScopesSkipProjectHooks(t *testing.T) {
+	home := testenv.TempDir(t)
+	proj := testenv.TempDir(t)
+	writeSettings(t, proj, sampleSettings)
+	writeSettings(t, home, `{"hooks":{"PostToolUse":[{"command":"echo g"}]}}`)
+
+	got := Load(LoadOptions{ProjectRoot: proj, HomeDir: home, Scopes: UserScopes})
+	if len(got) != 1 || got[0].Scope != ScopeGlobal || got[0].Command != "echo g" {
+		t.Fatalf("user-scope load = %+v, want only the global hook", got)
+	}
+	if got := Load(LoadOptions{ProjectRoot: proj, HomeDir: home, Scopes: []Scope{ScopeProject}}); len(got) != 2 || got[0].Scope != ScopeProject || got[1].Scope != ScopeProject {
+		t.Fatalf("project-scope load = %+v, want only the two project hooks", got)
 	}
 }
 
@@ -972,6 +988,9 @@ func TestHasCommandStringFlagParsesBashOptions(t *testing.T) {
 func TestDefaultSpawnerUsesGitBashForExplicitShOnWindows(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("exercises Git for Windows Bash discovery")
+	}
+	if !slices.ContainsFunc(sandbox.DetectShells(), func(sh sandbox.Shell) bool { return sh.Kind == sandbox.ShellBash }) {
+		t.Skip("Git Bash is optional on Windows and absent on this host")
 	}
 	r := DefaultSpawner(context.Background(), SpawnInput{
 		Command: `sh -c 'printf "%s" "$HOOK_TEST_MARKER"'`,

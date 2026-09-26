@@ -6,8 +6,13 @@ on:
   workflow_dispatch:
     inputs:
       replies:
-        description: 'JSON array of {"issue": 123, "body": "...", "close": true}'
+        description: 'JSON array of {"issue": 123, "body": "...", "close": true | "not_planned"}'
         required: true
+        type: string
+      interval:
+        description: Seconds between entries
+        required: false
+        default: '20'
         type: string
 
 permissions:
@@ -26,6 +31,7 @@ jobs:
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           REPLIES: ${{ inputs.replies }}
+          INTERVAL: ${{ inputs.interval }}
         with:
           script: |
             const replies = JSON.parse(process.env.REPLIES);
@@ -59,16 +65,16 @@ jobs:
                     }
                   }
                 }
-                if (close === true) {
+                if (close === true || close === 'not_planned') {
                   const { data } = await github.rest.issues.get({ owner, repo, issue_number: issue });
                   if (data.state === 'open') {
-                    await github.rest.issues.update({ owner, repo, issue_number: issue, state: 'closed', state_reason: 'completed' });
+                    await github.rest.issues.update({ owner, repo, issue_number: issue, state: 'closed', state_reason: close === 'not_planned' ? 'not_planned' : 'completed' });
                   }
                 }
-                core.info(`#${issue}: ${posted ? 'already replied' : 'replied'}${close === true ? ', closed' : ''}`);
+                core.info(`#${issue}: ${posted ? 'already replied' : 'replied'}${close ? ', closed' : ''}`);
               } catch (error) {
                 failed.push(`${issue}: ${error.message}`);
               }
-              await sleep(20_000);
+              await sleep(Math.max(1, Number(process.env.INTERVAL) || 20) * 1000);
             }
             if (failed.length) core.setFailed(`not done:\n${failed.join('\n')}`);

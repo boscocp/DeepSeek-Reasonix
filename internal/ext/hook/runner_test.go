@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -180,6 +181,33 @@ func TestRunnerPermissionRequestPayload(t *testing.T) {
 	}
 	if string(got.ToolArgs) != string(args) {
 		t.Errorf("ToolArgs = %s, want %s", got.ToolArgs, args)
+	}
+}
+
+func TestRunnerSubagentStartPayload(t *testing.T) {
+	if !IsKnownEvent("SubagentStart") {
+		t.Fatal("SubagentStart must be a known event so settings.json rules load")
+	}
+	hooks := []ResolvedHook{{HookConfig: HookConfig{Command: "pet"}, Event: SubagentStart}}
+	var got Payload
+	spawner := func(_ context.Context, in SpawnInput) SpawnResult {
+		if err := json.Unmarshal([]byte(in.Stdin), &got); err != nil {
+			t.Fatalf("payload json: %v", err)
+		}
+		return SpawnResult{ExitCode: 0}
+	}
+	args := json.RawMessage(`{"prompt":"survey the tests"}`)
+	NewRunner(hooks, "/tmp", spawner, nil).SubagentStart(context.Background(), "call_7", args)
+
+	if got.Event != SubagentStart || got.CallID != "call_7" || string(got.ToolArgs) != string(args) {
+		t.Errorf("payload = %+v, want SubagentStart with the call id and task arguments", got)
+	}
+
+	hooks = []ResolvedHook{{HookConfig: HookConfig{Command: "pet"}, Event: SubagentStop}}
+	got = Payload{}
+	NewRunner(hooks, "/tmp", spawner, nil).SubagentStop(context.Background(), "call_7", "", errors.New("cancelled"))
+	if got.Event != SubagentStop || got.CallID != "call_7" || got.Error != "cancelled" {
+		t.Errorf("payload = %+v, want SubagentStop with the call id and error", got)
 	}
 }
 
@@ -621,5 +649,46 @@ func TestDescribeOutcomeFallsBackToTheEvent(t *testing.T) {
 	}
 	if contains(n.Text, string(DecisionBlock)) {
 		t.Fatalf("headline = %q, want words rather than the decision enum", n.Text)
+	}
+}
+
+func TestRunnerForRoleDerivesSessionIDAtFireTime(t *testing.T) {
+	hooks := []ResolvedHook{{HookConfig: HookConfig{Command: "log", Match: "read_file"}, Event: PreToolUse}}
+	var got []Payload
+	spawner := func(_ context.Context, in SpawnInput) SpawnResult {
+		var p Payload
+		if err := json.Unmarshal([]byte(in.Stdin), &p); err != nil {
+			t.Fatalf("payload json: %v", err)
+		}
+		got = append(got, p)
+		return SpawnResult{ExitCode: 0}
+	}
+	parent := NewRunner(hooks, "/tmp", spawner, nil)
+	child := parent.ForRole("planner")
+	grandchild := child.ForRole("subagent:call-1")
+	child.PreToolUse(context.Background(), "read_file", json.RawMessage(`{}`))
+	parent.SetSessionID("parent")
+	child.PreToolUse(context.Background(), "read_file", json.RawMessage(`{}`))
+	parent.SetSessionID("rotated")
+	child.SetSessionID("ignored")
+	child.PreToolUse(context.Background(), "read_file", json.RawMessage(`{}`))
+	grandchild.PreToolUse(context.Background(), "read_file", json.RawMessage(`{}`))
+	parent.PreToolUse(context.Background(), "read_file", json.RawMessage(`{}`))
+	var ids []string
+	for _, p := range got {
+		ids = append(ids, p.SessionID)
+	}
+	want := []string{"planner", "parent:planner", "rotated:planner", "rotated:planner:subagent:call-1", "rotated"}
+	if !slices.Equal(ids, want) {
+		t.Fatalf("session ids = %q, want %q", ids, want)
+	}
+
+	parent.Replace(nil)
+	if child.Enabled() {
+		t.Fatal("hooks removed from the session still fire in its planner")
+	}
+	var none *Runner
+	if none.ForRole("planner") != nil {
+		t.Fatal("ForRole on a nil runner must stay a no-op runner")
 	}
 }

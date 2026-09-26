@@ -286,7 +286,9 @@ func (r readFile) scan(src io.Reader, offset, limit int) (string, error) {
 // context on hex that answers nothing.
 func binaryRefusal(displayPath string, head []byte, external bool) error {
 	if kind := imageKind(head); kind != "" {
-		return fmt.Errorf("%s is a %s image; read_file reads text. Reference it as @%s — a model that reads images receives the picture itself, and one that cannot delegates with read_only_task", displayPath, kind, displayPath)
+		// Only a reference in the user's own message attaches a picture; the
+		// model writing @path attaches nothing, so it is told to ask.
+		return fmt.Errorf("%s is a %s image; read_file reads text. A picture reaches a model only when the user's message references it as @%s: an image attached this turn is already seen by a model that reads images, and one that cannot hands it to read_only_task. This one is not viewable unless the user sends it as @%s — ask them to", displayPath, kind, displayPath, displayPath)
 	}
 	if external {
 		return fmt.Errorf("binary file %s (NUL byte detected); not shown by read_file", displayPath)

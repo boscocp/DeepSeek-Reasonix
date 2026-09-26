@@ -11,6 +11,7 @@ import (
 	"reasonix/internal/contract/provider"
 	"reasonix/internal/contract/tool"
 	"reasonix/internal/ext/extension/providerext"
+	"reasonix/internal/ext/hook"
 	"reasonix/internal/runtime/agent"
 	"reasonix/internal/runtime/capability"
 	"reasonix/internal/runtime/coordinator"
@@ -34,6 +35,7 @@ type roleWiring struct {
 	gate      *control.SharedHeadlessGate
 	reg       *tool.Registry
 	keep      agent.KeepPolicy
+	hooks     *hook.Runner // each role fires it under a session of its own
 }
 
 // planner wraps the executor in a Coordinator when a distinct planner_model is
@@ -73,6 +75,7 @@ func (w roleWiring) planner(opts Options, executor *agent.Agent, executorModel, 
 	plannerOpts := agent.Options{
 		MaxSteps:                     0,
 		Gate:                         w.gate,
+		Hooks:                        w.hooks.ForRole("planner"),
 		ModelRef:                     modelRefFromEntry(pe),
 		ContextWindow:                pe.ContextWindow,
 		CompactRatio:                 w.cfg.Agent.CompactRatio,
@@ -111,7 +114,7 @@ func (w roleWiring) guardian() *guardian.Session {
 		return nil
 	}
 	guardianReg := agent.FilterReadOnlyRegistry(w.reg, agent.SubagentMetaTools()...)
-	g := guardian.NewSession(pProv, guardianReg, guardian.PolicyPrompt(), modelRefFromEntry(ge), w.cfg.Agent.GuardianTemperature, ge.Price, w.sink)
+	g := guardian.NewSession(pProv, guardianReg, w.hooks.ForRole("guardian"), guardian.PolicyPrompt(), modelRefFromEntry(ge), w.cfg.Agent.GuardianTemperature, ge.Price, w.sink)
 	report(w.sink, event.Event{Level: event.LevelInfo, Text: fmt.Sprintf("guardian enabled · model=%s", ge.Model)})
 	return g
 }

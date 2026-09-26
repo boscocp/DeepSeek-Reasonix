@@ -18,7 +18,7 @@ import { UserCard } from "./cards/UserCard";
 import { NoticeCard } from "./cards/NoticeCard";
 import { RememberCard } from "./cards/RememberCard";
 import { ExtensionCard } from "./cards/ExtensionCard";
-import { toolFailed } from "./cards/outcome";
+import { toolChangedFile, toolFailed } from "./cards/outcome";
 import { drawn, transcriptRows } from "./turnrows";
 import { opensTurn, useBlocks } from "./blocks";
 import { Rail, type RailMark } from "./Rail";
@@ -576,14 +576,16 @@ const ActivityGroup = memo(function ActivityGroup({
   opened: Record<string, boolean>;
   onOpened: Dispatch<SetStateAction<Record<string, boolean>>>;
 } & RowHandlers) {
-  const running = items.some((item) => item.t === "tool" && item.running);
+  const runs = items.filter((item) => item.t === "tool" && item.running).length;
+  const running = runs > 0;
   // Whether this group is open is held above it, because the group itself does
   // not survive the turn: a run of work starts as a row of its own and is
   // re-hosted under the sentence it belongs to once that sentence arrives,
   // which unmounts it. State kept inside would be lost at exactly that moment.
   const gid = items[0]?.id ?? "";
   const live = useContext(LiveWork).has(gid);
-  const start = useStartsOpen("activity", running || live);
+  const changed = items.some((item) => item.t === "tool" && toolChangedFile(item.tool));
+  const start = useStartsOpen("activity", running || live, false, changed);
   const open = opened[gid] ?? start;
   const setOpen = useCallback(
     (next: boolean) => onOpened((all) => (all[gid] === next ? all : { ...all, [gid]: next })),
@@ -596,10 +598,11 @@ const ActivityGroup = memo(function ActivityGroup({
     return count;
   }, 0);
   return (
-    <details className="activity-group" data-failed={failures ? "" : undefined} open={open} onToggle={(event) => event.currentTarget.open !== open && setOpen(event.currentTarget.open)}>
+    <details className="activity-group" data-failed={failures ? "" : undefined} data-running={running ? "" : undefined} open={open} onToggle={(event) => event.currentTarget.open !== open && setOpen(event.currentTarget.open)}>
       <summary>
         <StudioIcon name={running ? "clock" : failures ? "warning" : "check"} className="activity-status-icon" />
         <span className="activity-title">{t("执行过程")}</span>
+        {running && <span className="activity-running">{t("{n} 项运行中", { n: runs })}</span>}
         {failures > 0 && <span className="activity-errors">{t("{n} 项失败", { n: failures })}</span>}
         <span className="activity-count">{t("{count} 项操作", { count: calls })}</span>
         <StudioIcon name="down" className="activity-fold-icon" />

@@ -43,6 +43,22 @@ Reasonix 全局 `<Reasonix home>/.env`。项目 `.env`、home `.env`、继承的
 `SessionStart` hook 可通过 stdout 或 `hookSpecificOutput.additionalContext` 把插件/工作流 bootstrap 内容一次性注入下一轮真实用户输入上下文，而不是写入稳定 system prompt。
 插件包可通过 `hooks/session-start-codex` 或插件根目录 `CLAUDE.md` 提供该启动上下文；Claude 风格 `.claude/settings.json` command hooks 也会按同名事件映射到 Reasonix hooks。
 
+工具 hooks（`PreToolUse`、`PostToolUse`、`PermissionRequest`）以及 `PostLLMCall` / `PreCompact` 在会话运行的每个 Agent 中都会触发，`session_id` 在 hook 触发时由父会话 id 派生：
+
+| Agent | Hook `session_id` |
+| --- | --- |
+| 执行器 | `<session>` |
+| 规划器 | `<session>:planner` |
+| Guardian | `<session>:guardian` |
+| `task`、`read_only_task`、`parallel_tasks`、`fleet`、`run_skill`、`read_only_skill` 子 Agent | `<session>:subagent:<call>` |
+| `reasonix review` | 每次运行一个新 id |
+
+`/new` 或切换分支后，子 Agent 随父会话换到新 id。
+
+`SubagentStart` 与 `SubagentStop` 只包住前台 `task` 调用：`read_only_task`、`parallel_tasks`、
+`fleet`、skill 子 Agent 和后台任务都不会触发。两者都带调用 id（`callId`）；子 Agent
+无论回答、失败、被取消还是拒绝，`SubagentStop` 都会触发。两者都不能阻断，exit 2 只会警告。
+
 ```toml
 default_model = "deepseek-flash"   # 执行器；设 [agent].planner_model 可加规划器
 # language    = "zh"               # 界面语言；为空则按 $LANG / $REASONIX_LANG 自动检测
@@ -713,6 +729,13 @@ Reasonix 是一个 MCP 客户端。`[[plugins]]` 的 `type` 选择传输：`stdi
 `headers`（`${VAR}` / `${VAR:-default}` 从环境展开，密钥不入文件）。
 `sse` 则兼容仍使用持久 GET 与 server 公布 POST endpoint 的旧版远程 server。
 
+`${REASONIX_WORKSPACE_ROOT}`（或 `${CLAUDE_PROJECT_DIR}`）展开为当前工作区的绝对路径，
+一条全局配置即可指明项目：
+
+```toml
+headers = { IJ_MCP_SERVER_PROJECT_PATH = "${REASONIX_WORKSPACE_ROOT}" }
+```
+
 远程 HTTP server 未配置静态 `Authorization` header 时，认证要求会显示为 **登录**。
 CLI 可运行 `reasonix mcp auth <name>`，桌面端则在 MCP 面板点击该 server 的 **登录**。
 Reasonix 会执行 OAuth 元数据发现、动态客户端注册、PKCE S256 授权与
@@ -1112,6 +1135,21 @@ destructive MCP 目标、来自未授权 server 的 reader，以及一切会改�
 | `read_only_skill` | 以既有 skill 驱动的同等隔离 |
 | `reasonix review`（CLI） | 只读评审 diff 或分支 |
 | 桌面端 preview/review 子代理 | 桌面端只读分析面 |
+
+`reasonix review` 把被评审的 checkout 视为不可信输入，只运行你自己的配置：
+
+- 评审 skill 只取内置版本，或你放在 Reasonix home / 用户主目录 skill 目录下的版本。
+  项目 skill 目录一律不读，`<root>/.reasonix/skills/review` 无法替换它。
+- 工具与沙盒（包括 `[tools.search]` 的 `engine` 与 `rg_path`）只取自
+  `<Reasonix home>/config.toml`，从不取自 checkout 的 `reasonix.toml`。
+- hooks 只运行你在 Reasonix home 下配置的：全局 `settings.json` 与已安装插件。
+  checkout 里的项目 hooks（`<root>/.reasonix/settings.json`）从不运行，
+  这些 hooks 使用的解释器只取自你自己的 `[tools.shell]`。
+- 评审 hooks 以 checkout 根目录为工作目录，便于检查代码，但像 `python` 这样的裸命令名
+  绝不会解析到 checkout 自带的可执行文件：hook 进程带有
+  `NoDefaultCurrentDirectoryInExePath=1`，Windows 上的 `cmd.exe` 因此不会优先搜索当前目录。
+
+模型与 provider 仍按合并后的配置解析，与普通会话相同。
 
 在持久化会话中，`parallel_tasks` 与 `fleet` 不再把所有完整答案拼成一个容易被截断的
 工具结果，而是为每个已完成子 Agent 返回有界预览和独立的 `Subagent reference`。父 Agent

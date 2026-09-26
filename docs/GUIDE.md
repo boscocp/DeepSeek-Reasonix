@@ -314,7 +314,10 @@ SSH connection — VS Code Remote-SSH style. It bootstraps a persistent headless
 `reasonix serve` on the remote host, forwards a local loopback port to it, and
 opens the existing serve web client through that tunnel. The agent, its tools,
 and its files all live on the remote host at full fidelity; nothing runs through
-a lossy file proxy. V1 supports Linux and macOS remote hosts.
+a lossy file proxy.
+
+Linux, macOS and Windows remote hosts are supported. A Windows host needs PowerShell and OpenSSH, whichever login shell (cmd,
+PowerShell or Git Bash) its `DefaultShell` names.
 
 Hosts live in a user-global `[remote]` section of `config.toml`. Like
 `[secrets]`, a project `reasonix.toml` cannot inject or override remote hosts —
@@ -599,6 +602,28 @@ events.
 The injected hook context is dynamic current-turn context. It does not change
 the stable system prompt, memory prefix, or tool schema, though dynamic content
 can still reduce cache reuse for that turn.
+
+Tool hooks (`PreToolUse`, `PostToolUse`, `PermissionRequest`), `PostLLMCall`
+and `PreCompact` fire in every agent a session runs. Each fires under a
+`session_id` derived from the parent session's id at the moment the hook runs:
+
+| Agent | Hook `session_id` |
+| --- | --- |
+| Executor | `<session>` |
+| Planner | `<session>:planner` |
+| Guardian | `<session>:guardian` |
+| `task`, `read_only_task`, `parallel_tasks`, `fleet`, `run_skill`, `read_only_skill` children | `<session>:subagent:<call>` |
+| `reasonix review` | a fresh id per run |
+
+`/new` or a branch switch moves every child to the new id along with the parent.
+
+`SubagentStart` and `SubagentStop`:
+
+- bracket a foreground `task` call only; `read_only_task`, `parallel_tasks`,
+  `fleet`, skill children and background tasks fire neither;
+- carry the call's id as `callId`, so a consumer can pair them;
+- `SubagentStop` fires on every end: answer, failure, cancel or refusal;
+- neither can block: exit 2 only warns.
 
 ## Keyboard shortcuts
 
@@ -901,6 +926,13 @@ Reasonix is an MCP client. A `[[plugins]]` entry's `type` selects the transport:
 (`${VAR}` / `${VAR:-default}` expanded from the environment, so tokens stay out
 of the file); `sse` connects to servers that still use the legacy persistent
 GET + announced POST endpoint transport.
+
+`${REASONIX_WORKSPACE_ROOT}` (or `${CLAUDE_PROJECT_DIR}`) expands to the current
+workspace's absolute path, so one global entry can name the project:
+
+```toml
+headers = { IJ_MCP_SERVER_PROJECT_PATH = "${REASONIX_WORKSPACE_ROOT}" }
+```
 
 For a remote HTTP server without a static `Authorization` header, an
 authentication challenge is shown as **Sign in**. Run
@@ -1436,6 +1468,26 @@ the strict read-only entrances:
 | `read_only_skill` | The same isolation driving an existing skill |
 | `reasonix review` (CLI) | Read-only review of a diff or branch |
 | Desktop preview/review subagents | Read-only desktop analysis surfaces |
+
+`reasonix review` treats the checkout it reviews as untrusted input and runs
+only your own configuration:
+
+- The review skill is the built-in one, or one in your Reasonix home or
+  home-directory skill folders. No project skill directory is read, so a
+  `<root>/.reasonix/skills/review` never replaces it.
+- Tools and their sandbox, including `[tools.search]` `engine` and `rg_path`,
+  come from `<Reasonix home>/config.toml`, never from the checkout's
+  `reasonix.toml`.
+- Hooks are only the ones you configured under the Reasonix home: the global
+  `settings.json` and installed plugins. Project hooks from the checkout
+  (`<root>/.reasonix/settings.json`) never run, and the interpreter those hooks
+  use comes from your own `[tools.shell]`.
+- Review hooks start in the checkout root so they can inspect it, but a bare
+  command such as `python` never resolves to an executable the checkout ships:
+  the hook process runs with `NoDefaultCurrentDirectoryInExePath=1`, which stops
+  `cmd.exe` on Windows from searching the current directory first.
+
+The model and provider still resolve from the merged config, as in a session.
 
 In persisted sessions, `parallel_tasks` and `fleet` return a bounded preview
 plus one `Subagent reference` per completed child instead of concatenating every

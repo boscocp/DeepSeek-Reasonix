@@ -2,7 +2,7 @@
 // PreToolUse / PostToolUse fire around each tool call, PermissionRequest fires
 // before a tool approval prompt is shown, UserPromptSubmit before a turn, Stop
 // after it. Hooks come from settings.json — a project
-// (.reasonix/settings.json, only when the project is trusted) and a global
+// (.reasonix/settings.json, unless LoadOptions.Scopes leaves it out) and a global
 // (<Reasonix home>/settings.json) file. A hook's exit
 // code is its verdict: 0 = pass, 2 = block (only on the gating events), other =
 // warn. The payload is delivered as JSON on stdin; output is captured (capped)
@@ -55,22 +55,23 @@ const (
 	// non-zero exit or empty stdout leaves the reasoning unchanged.
 	PostLLMCall Event = "PostLLMCall"
 	// SessionStart fires once when a session becomes active (fresh, resumed, or
-	// after /new). SessionEnd fires when it is closed or rotated. SubagentStop
-	// fires when a `task` sub-agent finishes. Notification fires when the agent
-	// needs the user's attention (e.g. a pending approval). PreCompact fires just
-	// before a compaction pass; its stdout is injected as extra summary guidance.
-	SessionStart Event = "SessionStart"
-	SessionEnd   Event = "SessionEnd"
-	SubagentStop Event = "SubagentStop"
-	Notification Event = "Notification"
-	PreCompact   Event = "PreCompact"
+	// after /new). SessionEnd fires when it is closed or rotated. SubagentStart
+	// and SubagentStop (non-blocking, paired by callId) bracket only a
+	// foreground `task` call. Notification fires when the agent needs the user's
+	// attention. PreCompact's stdout becomes extra compaction summary guidance.
+	SessionStart  Event = "SessionStart"
+	SessionEnd    Event = "SessionEnd"
+	SubagentStart Event = "SubagentStart"
+	SubagentStop  Event = "SubagentStop"
+	Notification  Event = "Notification"
+	PreCompact    Event = "PreCompact"
 )
 
 // Events is every event, in a stable order — drives loading and `/hooks`.
 var Events = []Event{
 	PreToolUse, PostToolUse, PostToolUseFailure, PermissionRequest, UserPromptSubmit, Stop, StopFailure,
 	PostLLMCall,
-	SessionStart, SessionEnd, SubagentStop, Notification, PreCompact,
+	SessionStart, SessionEnd, SubagentStart, SubagentStop, Notification, PreCompact,
 }
 
 // IsBlocking reports whether a non-zero/exit-2 (or timed-out) hook on this event
@@ -226,6 +227,17 @@ type LoadOptions struct {
 	// Trusted is retained for source compatibility. Project hooks are enabled
 	// automatically now, so callers no longer need to set it.
 	Trusted bool
+	// Scopes limits which sources load; nil loads every scope. ProjectRoot still
+	// reaches plugin hooks' environment when ScopeProject is left out.
+	Scopes []Scope
+}
+
+// UserScopes are the sources the user configured under the Reasonix home, and
+// none the workspace can write.
+var UserScopes = []Scope{ScopePlugin, ScopeGlobal}
+
+func (o LoadOptions) loads(scope Scope) bool {
+	return o.Scopes == nil || slices.Contains(o.Scopes, scope)
 }
 
 // Load resolves hooks: project first, then global; within a scope,
@@ -233,14 +245,19 @@ type LoadOptions struct {
 // — a typo shouldn't take down the CLI).
 func Load(opts LoadOptions) []ResolvedHook {
 	var out []ResolvedHook
-	if opts.ProjectRoot != "" {
+	if opts.ProjectRoot != "" && opts.loads(ScopeProject) {
 		p := ProjectSettingsPath(opts.ProjectRoot)
 		if s := readSettings(p); s != nil {
 			appendResolved(&out, s, ScopeProject, p)
 		}
 	}
 	reasonixHomeDir := reasonixHomeForOptions(opts)
-	appendPluginHooks(&out, reasonixHomeDir, opts.ProjectRoot)
+	if opts.loads(ScopePlugin) {
+		appendPluginHooks(&out, reasonixHomeDir, opts.ProjectRoot)
+	}
+	if !opts.loads(ScopeGlobal) {
+		return out
+	}
 	g := filepath.Join(reasonixHomeDir, SettingsFilename)
 	if reasonixHomeDir == "" {
 		g = GlobalSettingsPath(opts.HomeDir)
@@ -832,6 +849,7 @@ type Payload struct {
 	Event            Event           `json:"event"`
 	SessionID        string          `json:"sessionId,omitempty"`
 	Cwd              string          `json:"cwd"`
+	CallID           string          `json:"callId,omitempty"` // SubagentStart/Stop: pairs the two
 	ToolName         string          `json:"toolName,omitempty"`
 	ToolArgs         json.RawMessage `json:"toolArgs,omitempty"`
 	Subject          string          `json:"subject,omitempty"`
@@ -1157,6 +1175,9 @@ func marshalPayload(payload Payload, format string) string {
 			"trigger":                payload.Trigger,
 			"error":                  payload.Error,
 			"is_interrupt":           payload.IsInterrupt,
+		}
+		if payload.CallID != "" {
+			claude["tool_use_id"] = payload.CallID
 		}
 		body, _ = json.Marshal(claude)
 	} else {

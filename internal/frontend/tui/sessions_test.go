@@ -109,3 +109,12 @@ func TestVersionCommandShowsInstalledVersion(t *testing.T) {
 		t.Fatal("/version was sent to the kernel")
 	}
 }
+
+func TestVersionCommandShowsDevWhenVersionMissing(t *testing.T) {
+	m, _ := testModel(t)
+	m.composer.SetValue("/version")
+	run(m, press(m, "enter"))
+	if got := m.tr.Items[len(m.tr.Items)-1].Text; got != "reasonix dev" {
+		t.Fatalf("version notice = %q", got)
+	}
+}
