@@ -560,11 +560,8 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 			if event.Arguments != "" {
 				call.arguments = event.Arguments
 			}
-			if !call.completed {
-				call.completed = true
-				if !sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: call.id, Name: call.name, Arguments: call.arguments}}) {
-					return
-				}
+			if !completeFunctionCall(ctx, out, call) {
+				return
 			}
 		case "response.output_item.done":
 			if event.Item != nil && event.Item.Type == "web_search_call" && c.search.NativeEnabled {
@@ -586,21 +583,8 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 			if event.Item != nil {
 				switch event.Item.Type {
 				case "function_call":
-					call := callForItem(event.Item.ID)
-					if event.Item.CallID != "" {
-						call.id = event.Item.CallID
-					}
-					if event.Item.Name != "" {
-						call.name = event.Item.Name
-					}
-					if event.Item.Arguments != "" {
-						call.arguments = event.Item.Arguments
-					}
-					if !call.completed {
-						call.completed = true
-						if !sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: call.id, Name: call.name, Arguments: call.arguments}}) {
-							return
-						}
+					if !finishFunctionCall(ctx, out, callForItem(event.Item.ID), event.Item) {
+						return
 					}
 				case "reasoning":
 					// The done event carries the final item status
@@ -614,6 +598,13 @@ func (c *client) readStream(ctx context.Context, resp *http.Response, out chan<-
 			}
 		case "response.completed", "response.incomplete", "response.failed":
 			terminal = true
+			if event.Type != "response.failed" {
+				for _, item := range unclosedOutputCalls(event.Response, calls) {
+					if !finishFunctionCall(ctx, out, callForItem(item.ID), item) {
+						return
+					}
+				}
+			}
 			if event.Type == "response.incomplete" {
 				if !sendChunk(ctx, out, provider.Chunk{Type: provider.ChunkReasoning, ReasoningState: provider.ReasoningIncomplete}) {
 					return
@@ -784,7 +775,7 @@ func (i *sseItem) UnmarshalJSON(data []byte) error {
 }
 
 type sseResponse struct {
-	Output            []sseItem         `json:"output"`
+	Output            []json.RawMessage `json:"output"`
 	ID                string            `json:"id"`
 	Usage             *sseUsage         `json:"usage"`
 	Error             *sseError         `json:"error"`
