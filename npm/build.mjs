@@ -22,7 +22,7 @@ if (!tag) {
   console.error("usage: node npm/build.mjs <tag>   (e.g. v1.0.0 or npm-v1.0.0)");
   process.exit(1);
 }
-// A release carries an `npm-v*` tag beside `v*`; accept either form.
+// npm ships on its own `npm-v*` tag (release-npm.yml); also accept a bare `v*`.
 const version = tag.replace(/^(npm-)?v/, "");
 const binaryVersion = `v${version}`;
 const publish = process.argv.includes("--publish");
