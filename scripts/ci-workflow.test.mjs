@@ -27,6 +27,31 @@ const release = workflow("release-desktop");
 const promote = workflow("release-promote");
 const appMemory = workflow("app-memory");
 
+test("App memory artifacts support rerunning only failed shards", () => {
+  const prepare = job(appMemory, "prepare");
+  const shard = job(appMemory, "shard");
+  const aggregate = job(appMemory, "app-memory");
+  const upload = body => body.match(/uses: actions\/upload-artifact@[^\n]+\n        (?:if: [^\n]+\n        )?with:\n          name: ([^\n]+)([\s\S]*?)(?=\n      - |$)/);
+  const download = body => [...body.matchAll(/uses: actions\/download-artifact@[^\n]+\n        (?:if: [^\n]+\n        )?with:\n          (name|pattern): ([^\n]+)/g)];
+  const render = (name, attempt, shardId = 1) => name
+    .replaceAll("${{ github.run_id }}", "123")
+    .replaceAll("${{ github.run_attempt }}", String(attempt))
+    .replaceAll("${{ matrix.shard }}", String(shardId));
+  const build = upload(prepare);
+  const shardReport = upload(shard);
+  const shardBuild = download(shard)[0][2];
+  const [reports, aggregateBuild] = download(aggregate).map(match => match[2]);
+  assert.ok(build && shardReport && shardBuild && reports && aggregateBuild);
+  assert.match(build[2], /\n          overwrite: true\n/);
+  assert.match(shardReport[2], /\n          overwrite: true\n/);
+  assert.equal(render(build[1], 1), render(shardBuild, 2));
+  assert.equal(render(build[1], 1), render(aggregateBuild, 2));
+  for (const shardId of [1, 2, 3]) {
+    assert.equal(render(shardReport[1], shardId === 1 ? 2 : 1, shardId),
+      render(reports, 2).replaceAll("*", String(shardId)));
+  }
+});
+
 test("frontend artifact workflows share one exact Node runtime", () => {
   const version = readFileSync(new URL("../.node-version", import.meta.url), "utf8").trim();
   assert.match(version, /^\d+\.\d+\.\d+$/);
