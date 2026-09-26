@@ -55,6 +55,10 @@ Reasonix 全局 `<Reasonix home>/.env`。项目 `.env`、home `.env`、继承的
 
 `/new` 或切换分支后，子 Agent 随父会话换到新 id。
 
+`SubagentStart` 与 `SubagentStop` 只包住前台 `task` 调用：`read_only_task`、`parallel_tasks`、
+`fleet`、skill 子 Agent 和后台任务都不会触发。两者都带调用 id（`callId`）；子 Agent
+无论回答、失败、被取消还是拒绝，`SubagentStop` 都会触发。两者都不能阻断，exit 2 只会警告。
+
 ```toml
 default_model = "deepseek-flash"   # 执行器；设 [agent].planner_model 可加规划器
 # language    = "zh"               # 界面语言；为空则按 $LANG / $REASONIX_LANG 自动检测
