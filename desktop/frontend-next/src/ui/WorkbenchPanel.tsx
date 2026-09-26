@@ -338,8 +338,9 @@ export function WorkbenchPanel({
           setFile(next);
           setDraft(next.content);
         }
-      }, (e) => {
-        if (live) setFailed(reason(e));
+      }, () => {
+        // Atomic saves can briefly leave the path unreadable. Keep the last
+        // rendered document and retry on the next poll.
       }).finally(() => { reading = false; });
     }, 3000);
     return () => { live = false; window.clearInterval(timer); };
