@@ -95,6 +95,37 @@ func TestDragSelectsAndCopiesTranscriptText(t *testing.T) {
 	}
 }
 
+// The code rail is drawn, not written: a selection across a fenced block copies
+// the code without it, both once the answer settled and while it is live.
+func TestSelectionCopiesCodeWithoutTheRail(t *testing.T) {
+	for _, settle := range []bool{true, false} {
+		m, _ := testModel(t)
+		apply(m, eventwire.Event{Kind: "turn_started"}, eventwire.Event{Kind: "text", Text: "see\n\n```go\nfunc a() {\n\treturn\n}\n```\n\n"})
+		if settle {
+			apply(m, eventwire.Event{Kind: "message", Text: ""}, eventwire.Event{Kind: "turn_done"})
+		}
+		m.View()
+		rows := m.content(m.liveLines())
+		first, last := -1, -1
+		for i, r := range rows {
+			if strings.Contains(r, "func a()") {
+				first = i
+			}
+			if first >= 0 && strings.Contains(r, "}") {
+				last = i
+			}
+		}
+		if first < 0 || last < 0 || !strings.Contains(rows[first], "│") {
+			t.Fatalf("settle=%v: fixture drew no railed code block:\n%s", settle, strings.Join(rows, "\n"))
+		}
+		m.scr.sel = selection{active: true, anchor: selPos{first, 0}, head: selPos{last, m.contentWidth()}}
+		got := m.selectedText()
+		if strings.Contains(got, "│") || !strings.Contains(got, "func a() {") || !strings.Contains(got, "return") {
+			t.Fatalf("settle=%v: copied %q", settle, got)
+		}
+	}
+}
+
 // Settled rows keep how to draw them, so a narrower window rewraps them.
 func TestResizeRewrapsSettledRows(t *testing.T) {
 	m, _ := testModel(t)
