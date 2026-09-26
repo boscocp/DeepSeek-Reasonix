@@ -2,6 +2,8 @@ package boot
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"os"
 
 	"reasonix/internal/ablation"
@@ -53,12 +55,26 @@ func newSubagentSkillOptionsFactory(
 }
 
 func newBootHookRunner(resolved []hook.ResolvedHook, root string, shell sandbox.Shell, sink event.Sink) *hook.Runner {
+	return newHookRunner(resolved, root, shell,
+		func(msg string) { sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: msg}) })
+}
+
+// NewCommandHookRunner resolves hooks for a command that drives an agent
+// without Build, from the sources load names; hooks run in load.ProjectRoot.
+// Resolving shellCfg may execute its path, so it must come from a source the
+// command trusts as much as the hooks themselves. Warnings go to warn.
+func NewCommandHookRunner(shellCfg config.ShellConfig, load hook.LoadOptions, warn io.Writer) *hook.Runner {
+	shell := sandbox.ResolveShell(shellCfg.Prefer, shellCfg.Path, warn)
+	return newHookRunner(hook.Load(load), load.ProjectRoot, shell,
+		func(msg string) { _, _ = fmt.Fprintln(warn, msg) })
+}
+
+func newHookRunner(resolved []hook.ResolvedHook, root string, shell sandbox.Shell, notify func(string)) *hook.Runner {
 	runtime := hook.RuntimeOptions{}
 	if shell.Kind == sandbox.ShellBash {
 		runtime.BashPath = shell.Path
 	}
-	return hook.NewRunner(resolved, root, hook.NewDefaultSpawner(runtime),
-		func(msg string) { sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: msg}) })
+	return hook.NewRunner(resolved, root, hook.NewDefaultSpawner(runtime), notify)
 }
 
 func reviewSubagentSkillOptions(

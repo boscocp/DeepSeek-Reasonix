@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
+	"reasonix/internal/hook"
 	"reasonix/internal/permission"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/skill"
@@ -369,6 +372,7 @@ func (a *App) TrySubagentProfile(input SubagentProfileInput, task string) (strin
 		Pricing:       me.Price,
 		ContextWindow: me.ContextWindow,
 		Gate:          trySubagentPermissionGate(policy),
+		Hooks:         trySubagentHookRunner(cfg, root),
 	}, event.Discard)
 	if err != nil {
 		return "", err
@@ -382,6 +386,14 @@ func (a *App) TrySubagentProfile(input SubagentProfileInput, task string) (strin
 // runner has no approval UI that could answer such a request.
 func trySubagentPermissionGate(policy permission.Policy) agent.Gate {
 	return control.BuildHeadlessApprovalGate(policy, control.ToolApprovalAsk)
+}
+
+// trySubagentHookRunner loads hooks the way a chat session in root does, project
+// and user alike, since the try run reads the user's own open workspace. Each
+// run is its own hook session.
+func trySubagentHookRunner(cfg *config.Config, root string) *hook.Runner {
+	load := hook.LoadOptions{ProjectRoot: root}
+	return boot.NewCommandHookRunner(cfg.Tools.Shell, load, os.Stderr).ForSession("try-subagent:" + rand.Text())
 }
 
 // CancelTrySubagentProfile aborts the in-flight settings-page try run, if

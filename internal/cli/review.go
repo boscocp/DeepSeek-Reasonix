@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"reasonix/internal/boot"
 	"reasonix/internal/config"
 	"reasonix/internal/event"
+	"reasonix/internal/hook"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/skill"
 	"reasonix/internal/tool"
@@ -98,6 +100,7 @@ func reviewCommand(args []string) int {
 	// whether this path needs it too.
 	result, err := agent.RunReadOnlySubAgentWithSession(ctx, prov, reg, agent.NewSession(reviewSk.Body), task, agent.Options{
 		MaxSteps:      12,
+		Hooks:         reviewHookRunner(root),
 		Temperature:   cfg.Agent.Temperature,
 		Pricing:       entry.Price,
 		ContextWindow: entry.ContextWindow,
@@ -202,3 +205,22 @@ func buildReviewTask(diff string, extra string) string {
 	}
 	return b.String()
 }
+
+// reviewHookRunner takes hooks and their shell from user-level sources only: a
+// review usually runs in a checkout under review, and neither its
+// .reasonix/settings.json nor its reasonix.toml may choose a process this host
+// executes, not even by a bare command name resolving against the checkout
+// cwd. Each run is its own hook session.
+func reviewHookRunner(root string) *hook.Runner {
+	userCfg, err := config.LoadUserConfigReadOnly()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "warning: review hooks use the default shell:", err)
+		userCfg = config.Default()
+	}
+	load := hook.LoadOptions{ProjectRoot: root, SkipProject: true}
+	return newCommandHookRunner(userCfg.Tools.Shell, load, os.Stderr).
+		WithoutCwdCommandSearch().
+		ForSession("review:" + rand.Text())
+}
+
+var newCommandHookRunner = boot.NewCommandHookRunner

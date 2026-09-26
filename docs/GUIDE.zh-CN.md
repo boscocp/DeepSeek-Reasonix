@@ -1050,6 +1050,15 @@ destructive MCP 目标、来自未授权 server 的 reader，以及一切会改�
 | `reasonix review`（CLI） | 只读评审 diff 或分支 |
 | 桌面端 preview/review 子代理 | 桌面端只读分析面 |
 
+这些子会话都会运行你配置的 hooks，并各自使用独立的会话 ID。Planner 使用
+`<会话>:planner`，每次 hook 触发时都从父会话重新推导，因此会跟随 `/new` 与 `/clear`。
+桌面端 Profile 试运行与该工作区里的聊天会话一样，加载项目 hooks 和全局 hooks，会话为
+`try-subagent:<run>`。`reasonix review` 不同：它只运行你自己的 hooks，即全局
+`<Reasonix home>/settings.json` 与已安装插件，会话为 `review:<run>`；它从不运行被评审
+checkout 中的 `.reasonix/settings.json`，其 hooks 使用的解释器也只取你用户级 `config.toml`
+里的 `[tools.shell]`，从不取该 checkout 的 `reasonix.toml`，因为评审不受信任的分支时，
+不能执行该分支配置的命令或解释器。
+
 在持久化会话中，`parallel_tasks` 与 `fleet` 不再把所有完整答案拼成一个容易被截断的
 工具结果，而是为每个已完成子 Agent 返回有界预览和独立的 `Subagent reference`。父 Agent
 可用 `read_subagent_result` 按 `offset_bytes` 分页读取该引用对应的完整答案；读取范围受当前

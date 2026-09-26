@@ -1754,10 +1754,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 
 	var runner agent.Runner = executor
 	label := entry.Model
-	// Two-model collaboration: a distinct planner_model wraps the executor in a
-	// Coordinator with its own session, kept separate for cache stability. The
-	// planner gets the same standing memory context and a filtered read-only
-	// research tool set, so it can inspect rules/code without side effects.
+	// A distinct planner_model wraps the executor in a Coordinator with its own
+	// session (cache stability), the standing memory context, read-only research
+	// tools and its own hook session, so it inspects code without side effects.
 	pm := effectivePlannerModel(cfg, opts)
 	pe, plannerResolved := resolveOptionalEntry(effectiveResolver, cfg, pm)
 	if pm != "" && !plannerResolved {
@@ -1790,6 +1789,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			ImageInput:                   imageConfig,
 			MaxSteps:                     0,
 			Gate:                         headlessGate,
+			Hooks:                        hookRunner.ForRole("planner"),
 			ModelRef:                     modelRefFromEntry(pe),
 			QuoteContext:                 quoteCtx,
 			ContextWindow:                pe.ContextWindow,
