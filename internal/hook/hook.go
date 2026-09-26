@@ -2,7 +2,7 @@
 // PreToolUse / PostToolUse fire around each tool call, PermissionRequest fires
 // before a tool approval prompt is shown, UserPromptSubmit before a turn, Stop
 // after it. Hooks come from settings.json — a project
-// (.reasonix/settings.json, only when the project is trusted) and a global
+// (.reasonix/settings.json, unless the caller skips it) and a global
 // (<Reasonix home>/settings.json) file. A hook's exit
 // code is its verdict: 0 = pass, 2 = block (only on the gating events), other =
 // warn. The payload is delivered as JSON on stdin; output is captured (capped)
@@ -225,6 +225,10 @@ type LoadOptions struct {
 	// Trusted is retained for source compatibility. Project hooks are enabled
 	// automatically now, so callers no longer need to set it.
 	Trusted bool
+	// SkipProject leaves out the project's settings.json, for a command that
+	// runs against a checkout it must not take commands from. Global settings
+	// and installed plugins still load; ProjectRoot still sets their workspace.
+	SkipProject bool
 }
 
 // Load resolves hooks: project first, then global; within a scope,
@@ -232,7 +236,7 @@ type LoadOptions struct {
 // — a typo shouldn't take down the CLI).
 func Load(opts LoadOptions) []ResolvedHook {
 	var out []ResolvedHook
-	if opts.ProjectRoot != "" {
+	if opts.ProjectRoot != "" && !opts.SkipProject {
 		p := ProjectSettingsPath(opts.ProjectRoot)
 		if s := readSettings(p); s != nil {
 			appendResolved(&out, s, ScopeProject, p)

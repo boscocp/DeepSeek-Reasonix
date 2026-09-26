@@ -1354,6 +1354,18 @@ the strict read-only entrances:
 | `reasonix review` (CLI) | Read-only review of a diff or branch |
 | Desktop preview/review subagents | Read-only desktop analysis surfaces |
 
+These children run your configured hooks, each under its own session ID.
+The Planner uses `<session>:planner`, derived from the parent session every time
+a hook fires, so it follows `/new` and `/clear`. The desktop profile try run
+loads the workspace's project hooks and your global hooks, as a chat session in
+that workspace would, under `try-subagent:<run>`. `reasonix review` is
+different: it runs only your own hooks, meaning global
+`<Reasonix home>/settings.json` and installed plugins, under `review:<run>`. It
+never runs `.reasonix/settings.json` from the checkout under review, and its
+hooks use the `[tools.shell]` from your user `config.toml`, never the checkout's
+`reasonix.toml`, because reviewing an untrusted branch must not execute commands
+or interpreters that branch configures.
+
 In persisted sessions, `parallel_tasks` and `fleet` return a bounded preview
 plus one `Subagent reference` per completed child instead of concatenating every
 full answer into a truncation-prone tool result. The parent can call
