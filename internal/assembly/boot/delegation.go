@@ -2,6 +2,7 @@ package boot
 
 import (
 	"context"
+	"strings"
 
 	"reasonix/internal/contract/ablation"
 	"reasonix/internal/contract/config"
@@ -73,6 +74,7 @@ func (w roleWiring) taskTool(in delegationInputs) *delegation.TaskTool {
 		SubagentModel:     in.sub.taskModel,
 		SubagentEffort:    in.sub.taskEffort,
 		ResolveProvider:   in.sub.resolveProvider,
+		HooksForRole:      func(role string) agent.ToolHooks { return w.hooks.ForRole(role) },
 	}).
 		WithTranscripts(in.store, in.root, in.modelName, in.entry.Effort).
 		WithTranscriptIdentityResolver(in.sub.identity).
@@ -110,8 +112,18 @@ func (w roleWiring) skillRunOptions(in delegationInputs) func(context.Context, i
 			DeliveryProfile:   in.delivery,
 			Ablation:          in.opts.Ablation,
 			WorkspaceLease:    in.session.lease,
+			Hooks:             w.hooks.ForRole(skillSubagentRole(sctx)),
 		}
 	}
+}
+
+// skillSubagentRole names a skill child's hook session after the call that
+// spawned it, the way the task tool names its children.
+func skillSubagentRole(ctx context.Context) string {
+	if callID, _, _, ok := agent.CallContext(ctx); ok && strings.TrimSpace(callID) != "" {
+		return "subagent:" + strings.TrimSpace(callID)
+	}
+	return "subagent"
 }
 
 // skillProfile names the model and effort a skill's sub-agent overrides, or

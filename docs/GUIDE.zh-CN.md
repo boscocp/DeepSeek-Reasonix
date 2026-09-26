@@ -43,6 +43,18 @@ Reasonix 全局 `<Reasonix home>/.env`。项目 `.env`、home `.env`、继承的
 `SessionStart` hook 可通过 stdout 或 `hookSpecificOutput.additionalContext` 把插件/工作流 bootstrap 内容一次性注入下一轮真实用户输入上下文，而不是写入稳定 system prompt。
 插件包可通过 `hooks/session-start-codex` 或插件根目录 `CLAUDE.md` 提供该启动上下文；Claude 风格 `.claude/settings.json` command hooks 也会按同名事件映射到 Reasonix hooks。
 
+工具 hooks（`PreToolUse`、`PostToolUse`、`PermissionRequest`）以及 `PostLLMCall` / `PreCompact` 在会话运行的每个 Agent 中都会触发，`session_id` 在 hook 触发时由父会话 id 派生：
+
+| Agent | Hook `session_id` |
+| --- | --- |
+| 执行器 | `<session>` |
+| 规划器 | `<session>:planner` |
+| Guardian | `<session>:guardian` |
+| `task`、`read_only_task`、`parallel_tasks`、`fleet`、`run_skill`、`read_only_skill` 子 Agent | `<session>:subagent:<call>` |
+| `reasonix review` | 每次运行一个新 id |
+
+`/new` 或切换分支后，子 Agent 随父会话换到新 id。
+
 ```toml
 default_model = "deepseek-flash"   # 执行器；设 [agent].planner_model 可加规划器
 # language    = "zh"               # 界面语言；为空则按 $LANG / $REASONIX_LANG 自动检测
@@ -1112,6 +1124,14 @@ destructive MCP 目标、来自未授权 server 的 reader，以及一切会改�
 | `read_only_skill` | 以既有 skill 驱动的同等隔离 |
 | `reasonix review`（CLI） | 只读评审 diff 或分支 |
 | 桌面端 preview/review 子代理 | 桌面端只读分析面 |
+
+`reasonix review` 只触发你在 Reasonix home 下配置的 hooks：全局 `settings.json` 与已安装插件。
+
+它从不运行被评审 checkout 里的项目 hooks（`<root>/.reasonix/settings.json`）。待评审的分支是不可信输入，否则其中声明的 hook 会带着你的环境与密钥执行。
+
+这些 hooks 使用的解释器只取自你用户配置中的 `[tools.shell]`，被评审 checkout 的 `reasonix.toml` 无法指定。
+
+评审 hooks 以 checkout 根目录为工作目录，便于检查代码，但像 `python` 这样的裸命令名绝不会解析到 checkout 自带的可执行文件：hook 进程带有 `NoDefaultCurrentDirectoryInExePath=1`，Windows 上的 `cmd.exe` 因此不会优先搜索当前目录。
 
 在持久化会话中，`parallel_tasks` 与 `fleet` 不再把所有完整答案拼成一个容易被截断的
 工具结果，而是为每个已完成子 Agent 返回有界预览和独立的 `Subagent reference`。父 Agent

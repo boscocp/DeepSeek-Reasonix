@@ -248,7 +248,7 @@ func (b *builder) wireTools() error {
 	t.hooks, t.hookRunner = loadHooks(opts, b.roots, root, b.shell, b.sink)
 
 	t.roles = roleWiring{cfg: cfg, roots: b.roots, resolver: b.providers.effective, extension: b.providers.extension,
-		proxy: b.proxy, sink: b.sink, gate: t.gate, reg: t.reg, keep: b.keep}
+		proxy: b.proxy, sink: b.sink, gate: t.gate, reg: t.reg, keep: b.keep, hooks: t.hookRunner}
 	t.sub = newSubagentConfig(opts, cfg, b.model.entry, b.model.name, b.providers.effective, b.proxy, b.prompt.skillStore)
 	t.taskTool, t.skillRun = t.roles.delegation(delegationInputs{opts: opts, sub: t.sub, exec: b.execProv, entry: b.model.entry,
 		modelName: b.model.name, root: root, maxSteps: t.maxSteps, delivery: b.model.delivery, store: subagentStore,

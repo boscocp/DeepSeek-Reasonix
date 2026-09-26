@@ -91,6 +91,9 @@ func reviewCommand(args []string) int {
 	task := buildReviewTask(diff, *instructions)
 
 	// 7. Run the review subagent.
+	// The reviewed checkout is untrusted input: its own hooks never run here.
+	hooks := boot.NewUserHookRunner(cfg, root, os.Stderr)
+	hooks.SetSessionID(sessionstore.BranchID(sessionstore.NewSessionPath("", "review")))
 	ctx := context.Background()
 	// Deliberately minimal Options: this one-shot CLI path has no gate, no
 	// compaction, and no session, unlike the in-session sub-agent paths built
@@ -99,6 +102,7 @@ func reviewCommand(args []string) int {
 	// whether this path needs it too.
 	result, err := agent.RunReadOnlySubAgentWithSession(ctx, prov, reg, sessionstore.NewSession(reviewSk.Body), task, agent.Options{
 		MaxSteps:      12,
+		Hooks:         hooks,
 		Temperature:   cfg.Agent.Temperature,
 		Pricing:       entry.Price,
 		ContextWindow: entry.ContextWindow,
