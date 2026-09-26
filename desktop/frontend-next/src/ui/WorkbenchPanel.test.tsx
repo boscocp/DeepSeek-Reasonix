@@ -37,6 +37,33 @@ describe("WorkbenchPanel", () => {
     await waitFor(() => expect(document.querySelector(".workbench-read h2")?.textContent).toBe("Draft heading"));
   });
 
+  it("updates an open Markdown document after it changes on disk", async () => {
+    const user = userEvent.setup();
+    const port = new MockPort();
+    let content = "# First version";
+    const read = vi.spyOn(port, "workspaceFile").mockImplementation(async (path) => ({ path, content, revision: "fixture" }));
+    render(<WorkbenchPanel port={port} tabs={[]} manual={false} shown scheme="light" changes={[]} onCloseManual={vi.fn()} onSurfaces={vi.fn()} onExternal={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: "README.md" }));
+    await waitFor(() => expect(document.querySelector(".workbench-read h1")?.textContent).toBe("First version"));
+    content = "# Updated on disk";
+    await waitFor(() => expect(document.querySelector(".workbench-read h1")?.textContent).toBe("Updated on disk"), { timeout: 5000 });
+    expect(read).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole("button", { name: "编辑" }));
+    const editor = await waitFor(() => {
+      const element = document.querySelector(".cm-content");
+      if (!element) throw new Error("editor not mounted");
+      return EditorView.findFromDOM(element as HTMLElement)!;
+    });
+    act(() => editor.dispatch({ changes: { from: editor.state.doc.length, insert: "\n\n## Local draft" } }));
+    await user.click(screen.getByRole("button", { name: "阅读" }));
+    content = "# Changed again on disk";
+    await new Promise((resolve) => setTimeout(resolve, 3200));
+    expect(document.querySelector(".workbench-read h2")?.textContent).toBe("Local draft");
+    expect(read).toHaveBeenCalledTimes(2);
+  }, 10000);
+
   it("shows the start page only while the agent has none, and gives way to the agent's", () => {
     const props = { port: new MockPort(), manual: true, shown: false, scheme: "dark" as const, changes: [], onCloseManual: vi.fn(), onSurfaces: vi.fn(), onExternal: vi.fn() };
     const { rerender } = render(<WorkbenchPanel {...props} tabs={[]} />);

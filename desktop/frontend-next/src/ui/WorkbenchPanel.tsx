@@ -143,6 +143,9 @@ export function WorkbenchPanel({
     [diff, setDiff] = useState("");
   const [busy, setBusy] = useState(false),
     [failed, setFailed] = useState("");
+  const currentFile = useRef(file), currentDraft = useRef(draft);
+  currentFile.current = file;
+  currentDraft.current = draft;
   // Which editor opened it, or why none did. The host knows both and says so,
   // because a button that does nothing is indistinguishable from a broken one.
   const [editorNote, setEditorNote] = useState("");
@@ -318,6 +321,29 @@ export function WorkbenchPanel({
       live = false;
     };
   }, [port, active?.kind === "file" ? active.path : ""]);
+  // The workspace change list does not report every external editor write.
+  // Poll only the visible Markdown reader, and never replace an unsaved draft.
+  useEffect(() => {
+    if (!shown || !readable || mode !== "read" || !filePath) return;
+    let live = true, reading = false;
+    const timer = window.setInterval(() => {
+      const before = currentFile.current;
+      if (reading || !before || before.path !== filePath || currentDraft.current !== before.content) return;
+      reading = true;
+      void port.workspaceFile(filePath).then((next) => {
+        const now = currentFile.current;
+        if (!live || now?.path !== filePath || currentDraft.current !== now.content) return;
+        setFailed("");
+        if (next.content !== now.content || next.revision !== now.revision) {
+          setFile(next);
+          setDraft(next.content);
+        }
+      }, (e) => {
+        if (live) setFailed(reason(e));
+      }).finally(() => { reading = false; });
+    }, 3000);
+    return () => { live = false; window.clearInterval(timer); };
+  }, [port, shown, readable, mode, filePath]);
   // Picking a file is asking to read it. Docked, the list and the file share one
   // column, so the list steps aside; side by side it stays where it is.
   const openFile = (path: string) => {
