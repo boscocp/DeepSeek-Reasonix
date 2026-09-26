@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -30,11 +31,34 @@ func (m *model) statusBlock() []string {
 	width := max(m.width-1, 1)
 	first := layoutSides(footerIndent+m.modeTag()+" · "+m.stateText(), m.modelGroup(), width)
 	rows := strings.Split(first, "\n")
-	if tel := packGroups(m.telemetry(), width); len(tel) > 0 {
+	groups := m.telemetry()
+	if m.statusline != "" {
+		groups = []string{m.statusline}
+	}
+	if tel := packGroups(groups, width); len(tel) > 0 {
 		rows = append(rows, footerIndent+termrender.ThemeFg(termrender.ActiveTheme().Border, strings.Repeat("─", max(width-len(footerIndent), 1))))
 		rows = append(rows, tel...)
 	}
 	return rows
+}
+
+// statuslinePayload is the context a [statusline] command reads on stdin.
+func statuslinePayload(s Status) string {
+	label := s.Label
+	if label == "" {
+		label = modelName(s.ModelRef)
+	}
+	cwd := s.Cwd
+	if cwd == "" {
+		cwd = s.WorkspaceRoot
+	}
+	b, _ := json.Marshal(map[string]any{
+		"model":         label,
+		"contextUsed":   s.Used,
+		"contextWindow": s.Window,
+		"cwd":           cwd,
+	})
+	return string(b)
 }
 
 func (m *model) modeTag() string {

@@ -661,6 +661,7 @@ func (c *Config) DesktopMetrics() bool {
 // StatuslineConfig configures a custom status line. Command, when set, is run at
 // startup and after each turn; its first line of stdout replaces the built-in
 // status data row. A JSON payload (model, context tokens, cwd) is fed on stdin.
+// User/global only: LoadForRoot discards a project reasonix.toml's value.
 type StatuslineConfig struct {
 	Command string `toml:"command"`
 }
