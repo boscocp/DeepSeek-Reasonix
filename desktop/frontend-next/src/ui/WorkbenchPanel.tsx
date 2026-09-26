@@ -340,32 +340,50 @@ export function WorkbenchPanel({
   useEffect(() => {
     strip.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [activeKey, surfaces.length]);
+  const held = useRef({ file, draft });
+  held.current = { file, draft };
+  // Revisions are opaque, so only order says which answer is current: a read
+  // counts only if no save or later read has been issued since it started.
+  const issued = useRef(0);
+  const openPath = active?.kind === "file" ? active.path : "";
+  // The file is read again on the same occasions as the tree, because the agent
+  // and other applications write it without telling this view. Unsaved edits
+  // win: overwriting a draft with the disk would lose work nobody asked to drop.
   useEffect(() => {
-    if (!active || active.kind !== "file") return;
+    if (!openPath) return;
+    const prior = held.current.file?.path === openPath ? held.current.file : null;
+    if (prior && (!shown || held.current.draft !== prior.content)) return;
     let live = true;
-    setBusy(true);
-    setFailed("");
+    const ticket = ++issued.current;
+    if (!prior) {
+      setBusy(true);
+      setFailed("");
+    }
     Promise.all([
-      port.workspaceFile(active.path),
+      port.workspaceFile(openPath),
       port
-        .changeDiff(active.path)
-        .catch(() => ({ path: active.path, diff: "", truncated: false })),
+        .changeDiff(openPath)
+        .catch(() => ({ path: openPath, diff: "", truncated: false })),
     ])
       .then(
         ([next, patch]) => {
-          if (live) {
+          if (!live || ticket !== issued.current) return;
+          const now = held.current;
+          if (prior && (now.file?.path !== openPath || now.draft !== now.file.content)) return;
+          setFailed("");
+          if (!prior || now.file?.revision !== next.revision) {
             setFile(next);
             setDraft(next.content);
-            setDiff(patch.diff);
           }
+          setDiff(patch.diff);
         },
-        (e) => live && setFailed(reason(e)),
+        (e) => live && ticket === issued.current && setFailed(reason(e)),
       )
-      .finally(() => live && setBusy(false));
+      .finally(() => live && !prior && setBusy(false));
     return () => {
       live = false;
     };
-  }, [port, active?.kind === "file" ? active.path : ""]);
+  }, [port, openPath, shown, changeKey, glance, running]);
   // Picking a file is asking to read it. Docked, the list and the file share one
   // column, so the list steps aside; side by side it stays where it is.
   const openFile = (path: string) => {
@@ -448,6 +466,7 @@ export function WorkbenchPanel({
     if (!file || draft === file.content) return;
     setBusy(true);
     setFailed("");
+    issued.current++;
     try {
       setFile(await port.saveWorkspaceFile({ ...file, content: draft }));
     } catch (e) {
