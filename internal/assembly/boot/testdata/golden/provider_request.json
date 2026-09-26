@@ -575,11 +575,9 @@
                   "type": "string"
                 },
                 "level": {
-                  "description": "Nesting level: 0 = phase/milestone, 1 = a sub-step of the phase above it. Omit for a flat list.",
-                  "enum": [
-                    0,
-                    1
-                  ],
+                  "description": "0 = phase/milestone, 1 = a sub-step of the phase above it. Omit for a flat list.",
+                  "maximum": 1,
+                  "minimum": 0,
                   "type": "integer"
                 },
                 "status": {
