@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/control"
+	"reasonix/internal/sessioncatalog"
 )
 
 func TestProjectTreeRuntimeSnapshotWailsArraysAreNonNil(t *testing.T) {
@@ -245,5 +248,28 @@ func TestOpenProjectTabPublishesTaggedRuntimeInvalidation(t *testing.T) {
 		case <-deadline:
 			t.Fatal("opening a project topic emitted no tagged runtime invalidation")
 		}
+	}
+}
+
+// A tab opened from a legacy row carries the identity that row is listed by,
+// so the sidebar overlays the tab on it instead of adding a second row.
+func TestProjectTreeRuntimeLegacyTabSharesHistoricalRowIdentity(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "20260926-091447.469029500-fake-model.jsonl")
+	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp()
+	app.tabs["legacy"] = &WorkspaceTab{
+		ID: "legacy", Scope: "global", TopicID: "topic-legacy", SessionPath: path,
+		Ctrl: &activationStubController{sessionPath: path}, Ready: true,
+	}
+	snapshot := app.GetProjectTreeRuntimeSnapshot()
+	if len(snapshot.Topics) != 1 {
+		t.Fatalf("runtime topics = %+v, want one", snapshot.Topics)
+	}
+	source := snapshot.Topics[0].Node.Source
+	want := agent.SessionSourceKeyFromIdentity(sessioncatalog.PathIdentityKey(path), "")
+	if source == nil || source.SourceKey != want {
+		t.Fatalf("runtime source = %+v, want the historical row's key %s", source, want)
 	}
 }
