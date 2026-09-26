@@ -206,7 +206,7 @@ func (m *model) printAbove(out string) tea.Cmd {
 		if i > 0 {
 			prints = append(prints, tea.Tick(printGap, func(time.Time) tea.Msg { return nil }))
 		}
-		prints = append(prints, tea.Println(piece))
+		prints = append(prints, tea.Println(m.glyphs.apply(piece)))
 	}
 	return tea.Sequence(prints...)
 }

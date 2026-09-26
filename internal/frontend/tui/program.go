@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"os"
 	"strings"
 	"time"
 
@@ -82,6 +83,7 @@ type model struct {
 	// frameRows is how tall the last inline frame was: a print has only the
 	// rows above it to land in.
 	frameRows int
+	glyphs    *glyphFit // console-measured stand-ins for runes drawn wider than counted
 }
 
 type (
@@ -127,6 +129,7 @@ func newModel(ctx context.Context, opts Options) *model {
 		ctx: ctx, client: opts.Client, opts: opts,
 		committed: map[int]bool{}, sayShown: map[int]int{},
 		composer: ta, width: 80, height: 24,
+		glyphs: newConsoleGlyphFit(os.Stdout),
 	}
 	if !opts.Inline {
 		m.scr = &screen{follow: true, mouseOff: mouseCaptureOffByDefault()}
