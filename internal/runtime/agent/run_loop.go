@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"reasonix/internal/contract/hostaudit"
 	"reasonix/internal/state/sessionstore"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -594,15 +595,11 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 	// is reported here, where it is still the outcome of this turn.
 	a.reportReviewWarnings()
 	if !hasVisibleFinalAnswer(text) {
-		// DeepSeek thinking mode can stream a long reasoning_content and
-		// then finish with finish_reason="stop" but an empty content
-		// block: the model has explicitly signalled completion and its
-		// reasoning was already streamed to the user. Retrying here overrides
-		// that stop signal and forces another expensive thinking round (the
-		// "still thinking after the task is done" symptom), so honour the
-		// stop when reasoning carried the substance of the answer and treat
-		// the turn as a final answer instead of retrying.
-		if a.role.requireVisibleFinal || !reasoningOnlyFinishHonoured(a.svc.prov, usage, reasoning) {
+		// A DeepSeek reasoning-only stop is honoured: retrying it forces another
+		// thinking round after the task is done. Tool results with no visible
+		// synthesis after them are the exception and get exactly one retry.
+		owedSynthesis := state.usedAnyTool && state.emptyFinalBlocks == 0 && silentSinceLastToolRound(a.sess.conversation.Messages)
+		if a.role.requireVisibleFinal || owedSynthesis || !reasoningOnlyFinishHonoured(a.svc.prov, usage, reasoning) {
 			state.emptyFinalBlocks++
 			if state.emptyFinalBlocks >= maxEmptyFinalBlocks {
 				return false, fmt.Errorf("model finished without a visible final answer %d times", state.emptyFinalBlocks)
@@ -629,6 +626,25 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 	// carries into the next turn un-folded and can overflow the model window.
 	// No-op below the trigger, so normal turns keep their warm cache.
 	return false, nil // model gave a final answer
+}
+
+// silentSinceLastToolRound reports whether the transcript holds a tool result
+// with no visible assistant text after it.
+func silentSinceLastToolRound(messages []provider.Message) bool {
+	for _, message := range slices.Backward(messages) {
+		if message.LocalOnly {
+			continue
+		}
+		switch message.Role {
+		case provider.RoleTool:
+			return true
+		case provider.RoleAssistant:
+			if hasVisibleFinalAnswer(message.Content) {
+				return false
+			}
+		}
+	}
+	return false
 }
 
 // handleToolRound executes a tool batch, persists tool messages, handles
