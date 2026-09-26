@@ -2151,6 +2151,7 @@ model = "executor-model"%s
 func TestBuildInjectsEnvironmentBlockIntoSessionContextByDefaultAndEconomy(t *testing.T) {
 	for _, tokenMode := range []string{"", "economy"} {
 		t.Run(firstNonEmpty(tokenMode, "default"), func(t *testing.T) {
+			t.Setenv("SHELL", "/bin/fish")
 			isolateConfigHome(t)
 			dir := robustTempDir(t)
 			t.Chdir(dir)
@@ -2174,6 +2175,9 @@ model = "x"
 			contextBlock := sessionContextMessage(req.Messages)
 			if !strings.Contains(contextBlock, "## Environment") || !strings.Contains(contextBlock, "- OS:") || !strings.Contains(contextBlock, "Detected tools:") {
 				t.Fatalf("environment block missing from session context in tokenMode=%q:\n%s", tokenMode, contextBlock)
+			}
+			if !strings.Contains(contextBlock, "user login shell: fish") {
+				t.Fatalf("environment block omitted the user's login shell in tokenMode=%q:\n%s", tokenMode, contextBlock)
 			}
 		})
 	}
