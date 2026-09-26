@@ -14,6 +14,7 @@ import { StudioIcon } from "./StudioIcon";
 import { LazyMarkdown } from "./LazyMarkdown";
 import type { LocalRefs } from "./Markdown";
 import { docRef } from "./docrefs";
+import { useGlance } from "./glance";
 
 // The editor and its grammars load with the first file opened, not with Studio.
 const CodeEditor = lazy(() => import("./CodeEditor"));
@@ -103,6 +104,7 @@ export function WorkbenchPanel({
   shown,
   scheme,
   changes,
+  running = false,
   onCloseManual,
   onSurfaces,
   onExternal,
@@ -113,6 +115,9 @@ export function WorkbenchPanel({
   shown: boolean;
   scheme: "light" | "dark";
   changes: WorkspaceChange[];
+  /** Whether a turn is in flight: one that settles can have written files git
+   *  does not list, so the change set alone does not say the tree moved. */
+  running?: boolean;
   onCloseManual: () => void;
   // How many surfaces the strip holds, for the pane's own tab to count.
   onSurfaces: (n: number) => void;
@@ -155,6 +160,10 @@ export function WorkbenchPanel({
   const changeKey = changes
     .map((change) => `${change.status}:${change.path}`)
     .join("\n");
+  // The kernel reads the disk on every listing and keeps nothing, so the tree is
+  // only as stale as the last time it asked. A delete in another application
+  // tells nobody here; looking back at the window is when it can have happened.
+  const glance = useGlance();
   useEffect(() => {
     if (!shown) return;
     let live = true;
@@ -193,7 +202,7 @@ export function WorkbenchPanel({
     return () => {
       live = false;
     };
-  }, [port, shown, changeKey, query]);
+  }, [port, shown, changeKey, query, glance, running]);
   // The button in the chrome says "show me the browser", not "show me this one
   // browser". When the agent has a page, that page is the browser; the start
   // page is only for an empty column, and steps aside unused once the agent

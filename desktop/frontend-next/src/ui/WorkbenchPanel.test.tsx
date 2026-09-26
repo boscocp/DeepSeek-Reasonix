@@ -78,4 +78,40 @@ describe("WorkbenchPanel", () => {
     expect(container.querySelector(".workbench-body")?.hasAttribute("data-files")).toBe(false);
     expect(screen.getByRole("tab", { name: "README.md" }).getAttribute("aria-selected")).toBe("true");
   });
+
+  // The port answers from a disk the test owns, and the delete goes around every
+  // port call — the way a file manager does it — so nothing announces it.
+  it("drops a folder deleted outside the app once the window is looked at again", async () => {
+    const disk = new Map<string, "dir" | "file">([["t620", "dir"], ["kept", "dir"], ["skills-lock.json", "file"]]);
+    const port = new MockPort();
+    vi.spyOn(port, "workspaceFiles").mockImplementation(async () => ({
+      files: [...disk].filter(([, kind]) => kind === "file").map(([name]) => name),
+      directories: [...disk].filter(([, kind]) => kind === "dir").map(([name]) => name),
+    }));
+    render(<WorkbenchPanel port={port} tabs={[]} manual={false} shown scheme="light" changes={[]} onCloseManual={vi.fn()} onSurfaces={vi.fn()} onExternal={vi.fn()} />);
+    await screen.findByRole("button", { name: "t620" });
+
+    disk.delete("t620");
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: "t620" })).toBeNull());
+    expect(screen.getByRole("button", { name: "kept" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "skills-lock.json" })).toBeTruthy();
+  });
+
+  it("reads the tree again when a turn settles, whatever git lists as changed", async () => {
+    const disk = new Set(["notes.md"]);
+    const port = new MockPort();
+    vi.spyOn(port, "workspaceFiles").mockImplementation(async () => ({ files: [...disk], directories: [] }));
+    const props = { port, tabs: [], manual: false, shown: true, scheme: "light" as const, changes: [], onCloseManual: vi.fn(), onSurfaces: vi.fn(), onExternal: vi.fn() };
+    const { rerender } = render(<WorkbenchPanel {...props} running />);
+    await screen.findByRole("button", { name: "notes.md" });
+
+    disk.add("report.html");
+    rerender(<WorkbenchPanel {...props} running={false} />);
+
+    expect(await screen.findByRole("button", { name: "report.html" })).toBeTruthy();
+  });
 });
