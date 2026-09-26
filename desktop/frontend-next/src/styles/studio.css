@@ -3868,8 +3868,6 @@ body { font-size: 14px; line-height: 1.75; }
 @media (max-width: 760px) {
   .prefs-main { padding-top: 20px; }
   .grp { padding: 17px 15px 15px; }
-  .vway { align-items: flex-start; flex-wrap: wrap; }
-  .vway .why { flex-basis: 100%; }
 }
 
 /* The brand rail and conversation chrome are one application title bar. Keep
