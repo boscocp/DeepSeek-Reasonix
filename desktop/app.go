@@ -9954,6 +9954,10 @@ func listDirForWorkspaceTarget(base string, ctrl control.SessionAPI, rel string)
 		}
 		dir = path
 	}
+	realDir, realBase, err := canonicalPathWithin(base, dir)
+	if err != nil {
+		return []DirEntry{}
+	}
 	es, err := os.ReadDir(dir)
 	if err != nil {
 		return []DirEntry{}
@@ -9961,15 +9965,18 @@ func listDirForWorkspaceTarget(base string, ctrl control.SessionAPI, rel string)
 	dirs, files := []DirEntry{}, []DirEntry{}
 	for _, e := range es {
 		name := e.Name()
-		if fileref.SkipBrowseEntry(name, e.IsDir()) {
+		info, err := e.Info()
+		if err == nil && info.Mode()&os.ModeSymlink != 0 {
+			info, err = linkedEntryInTree(realBase, realDir, filepath.Join(dir, name))
+		}
+		if err != nil || fileref.SkipBrowseEntry(name, info.IsDir()) {
 			continue
 		}
-		if e.IsDir() {
+		if info.IsDir() {
 			dirs = append(dirs, DirEntry{Name: name, IsDir: true})
 			continue
 		}
-		info, err := e.Info()
-		if err != nil || !info.Mode().IsRegular() {
+		if !info.Mode().IsRegular() {
 			continue
 		}
 		files = append(files, DirEntry{Name: name, IsDir: false})
@@ -9977,6 +9984,20 @@ func listDirForWorkspaceTarget(base string, ctrl control.SessionAPI, rel string)
 	sort.Slice(dirs, func(i, j int) bool { return fileref.NaturalLess(dirs[i].Name, dirs[j].Name) })
 	sort.Slice(files, func(i, j int) bool { return fileref.NaturalLess(files[i].Name, files[j].Name) })
 	return append(dirs, files...)
+}
+
+// linkedEntryInTree stats a link's target when it resolves inside the
+// workspace and not onto the folder being listed or one of its ancestors; a
+// folder that contains itself would be expanded without end.
+func linkedEntryInTree(realBase, realDir, link string) (os.FileInfo, error) {
+	target, _, err := canonicalPathWithin(realBase, link)
+	if err != nil {
+		return nil, err
+	}
+	if up, err := filepath.Rel(target, realDir); err == nil && filepath.IsLocal(up) {
+		return nil, os.ErrPermission
+	}
+	return os.Stat(target)
 }
 
 // SearchFileRefs finds workspace files by basename for bare "@token" completion.
@@ -10037,20 +10058,28 @@ func externalFolderDirEntries(entries []control.ExternalFolderRefEntry) []DirEnt
 }
 
 func (a *App) workspaceOrExternalPathForTab(tabID, rel string) (string, bool, error) {
+	path, _, ok, err := a.tabPathAndBase(tabID, rel)
+	return path, ok, err
+}
+
+// tabPathAndBase also returns the workspace base the path was joined under,
+// empty for a session-authorized external folder reference.
+func (a *App) tabPathAndBase(tabID, rel string) (string, string, bool, error) {
 	root, ctrl, ok := a.workspaceTargetForTab(tabID)
 	if !ok {
-		return "", false, os.ErrNotExist
+		return "", "", false, os.ErrNotExist
 	}
 	if browser := externalFolderRefBrowserFromController(ctrl); browser != nil {
 		if path, _, ok := browser.ExternalFolderRefLocalPath(rel); ok {
-			return path, true, nil
+			return path, "", true, nil
 		}
 	}
 	base, err := workspaceBaseFromRoot(root)
 	if err != nil {
-		return "", false, err
+		return "", "", false, err
 	}
-	return workspacePathForBase(base, rel)
+	path, ok, err := workspacePathForBase(base, rel)
+	return path, base, ok, err
 }
 
 // ReadFile returns a small text preview for a file under the current workspace
@@ -10061,9 +10090,15 @@ func (a *App) ReadFile(rel string) FilePreview {
 
 // ReadFileForTab returns a preview resolved against the requested tab.
 func (a *App) ReadFileForTab(tabID, rel string) FilePreview {
-	path, ok, err := a.workspaceOrExternalPathForTab(tabID, rel)
+	path, base, ok, err := a.tabPathAndBase(tabID, rel)
 	if err != nil || !ok {
 		return FilePreview{Path: rel, Err: "invalid path"}
+	}
+	// The lexical join is not containment: a linked component can leave the tree.
+	if base != "" {
+		if _, _, err := canonicalPathWithin(base, path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return FilePreview{Path: rel, Err: "invalid path"}
+		}
 	}
 	return a.readFilePathForTab(tabID, rel, path, false)
 }
