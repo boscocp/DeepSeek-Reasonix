@@ -14,6 +14,7 @@ import (
 	"reasonix/internal/event"
 	"reasonix/internal/hook"
 	"reasonix/internal/sandbox"
+	"reasonix/internal/secrets"
 	"reasonix/internal/skill"
 	"reasonix/internal/tool"
 	"reasonix/internal/tool/builtin"
@@ -72,9 +73,10 @@ func reviewCommand(args []string) int {
 		return 1
 	}
 
-	// 4. Get the built-in review skill.
+	// 4. Get the review skill. The checkout under review is untrusted, so the
+	// store has no project scope: only built-in and user-level skills resolve.
 	root, _ := os.Getwd()
-	skillStore := skill.New(skill.Options{ProjectRoot: root, Stderr: os.Stderr})
+	skillStore := skill.New(skill.Options{Stderr: os.Stderr})
 	reviewSk, ok := skillStore.Read("review")
 	if !ok {
 		fmt.Fprintln(os.Stderr, "error: built-in review skill not found")
@@ -85,8 +87,10 @@ func reviewCommand(args []string) int {
 		return 1
 	}
 
-	// 5. Build a review-scoped sub-agent registry.
-	reg := buildReviewSubagentRegistry(reviewSk, cfg, root)
+	// 5. Build a review-scoped sub-agent registry from the user's own config:
+	// the checkout's reasonix.toml may not choose a binary or a sandbox here.
+	secrets.RegisterCredentialEnvKeys(cfg.CredentialEnvNames())
+	reg := buildReviewSubagentRegistry(reviewSk, reviewToolConfig(), root)
 
 	// 6. Prepare the review prompt.
 	task := buildReviewTask(diff, *instructions)
@@ -156,6 +160,15 @@ func buildReviewSubagentRegistry(reviewSk skill.Skill, cfg *config.Config, root 
 		return agent.ReadOnlySubagentToolRegistry(parentReg, reviewSk.AllowedTools)
 	}
 	return agent.SubagentToolRegistry(parentReg, reviewSk.AllowedTools)
+}
+
+func reviewToolConfig() *config.Config {
+	userCfg, err := config.LoadUserConfigReadOnly()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "warning: review tools use built-in defaults:", err)
+		return config.Default()
+	}
+	return userCfg
 }
 
 // getReviewDiff runs the appropriate git diff command and returns its output.
