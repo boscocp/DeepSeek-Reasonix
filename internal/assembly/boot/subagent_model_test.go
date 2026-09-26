@@ -2,6 +2,7 @@ package boot
 
 import (
 	"path/filepath"
+	"reasonix/internal/base/netclient"
 	"reasonix/internal/state/sessionstore"
 	"testing"
 
@@ -194,5 +195,41 @@ func TestNewSubagentStoreCleansStaleRunningRefs(t *testing.T) {
 	}
 	if meta.Status != sessionstore.SubagentInterrupted {
 		t.Fatalf("status = %q, want interrupted", meta.Status)
+	}
+}
+
+type recordingResolver struct{ refs []string }
+
+func (r *recordingResolver) Catalog() []provider.Descriptor { return nil }
+func (r *recordingResolver) Resolve(sel provider.Selection) (provider.Provider, error) {
+	r.refs = append(r.refs, sel.Ref)
+	return nil, nil
+}
+
+func TestSubagentBareModelStaysOnParentProvider(t *testing.T) {
+	cfg := config.Default()
+	cfg.Providers = []config.ProviderEntry{
+		{Name: "first", Kind: "openai", Models: []string{"shared-flash", "first-only"}},
+		{Name: "relay", Kind: "openai", Models: []string{"shared-flash"}},
+	}
+	base, ok := cfg.ResolveModel("relay/shared-flash")
+	if !ok {
+		t.Fatal("relay/shared-flash should resolve")
+	}
+	rec := &recordingResolver{}
+	sub := newSubagentConfig(Options{}, cfg, base, "relay/shared-flash", rec, netclient.ProxySpec{}, nil)
+
+	if _, _, _, err := sub.resolveProvider("shared-flash", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := sub.resolveProvider("first-only", ""); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"relay/shared-flash", "first/first-only"}
+	if len(rec.refs) != 2 || rec.refs[0] != want[0] || rec.refs[1] != want[1] {
+		t.Fatalf("resolved refs = %q, want %q", rec.refs, want)
+	}
+	if model, _ := sub.identity("shared-flash", ""); model != "relay/shared-flash" {
+		t.Fatalf("identity = %q, want relay/shared-flash", model)
 	}
 }

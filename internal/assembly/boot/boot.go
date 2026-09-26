@@ -373,7 +373,9 @@ func subagentEffectiveIdentity(cfg *config.Config, resolver provider.Resolver, b
 	}
 	ref := strings.TrimSpace(modelRef)
 	explicit := ref != ""
-	if !explicit {
+	if explicit {
+		ref = childModelRef(cfg, base, ref)
+	} else {
 		ref = strings.TrimSpace(baseModelRef)
 	}
 	if explicit && cfg != nil && ref != "" {
