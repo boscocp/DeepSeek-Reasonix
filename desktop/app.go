@@ -1344,7 +1344,7 @@ func (a *App) snapshotTab(tab *WorkspaceTab) error {
 	readOnly := tab.ReadOnly
 	ctrl := tab.Ctrl
 	a.mu.RUnlock()
-	if readOnly || ctrl == nil {
+	if readOnly || ctrl == nil || historicalPreview(ctrl) {
 		return nil
 	}
 	return ctrl.Snapshot()
@@ -1453,8 +1453,10 @@ func (a *App) ensureTabControllerWorkspace(tab *WorkspaceTab) error {
 	if rootMatches && dirMatches && sessionMatches {
 		return nil
 	}
-	if err := ctrl.Snapshot(); err != nil {
-		return err
+	if !historicalPreview(ctrl) {
+		if err := ctrl.Snapshot(); err != nil {
+			return err
+		}
 	}
 	ctrl.Close()
 
@@ -3016,7 +3018,7 @@ func (a *App) prepareRemovedSessionRuntimes(removed []removedSessionRuntime) err
 				return err
 			}
 		}
-		if item.readOnly {
+		if item.readOnly || historicalPreview(item.ctrl) {
 			continue
 		}
 		if err := item.ctrl.Snapshot(); err != nil {

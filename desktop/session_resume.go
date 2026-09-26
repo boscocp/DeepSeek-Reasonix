@@ -47,8 +47,10 @@ func (a *App) continueLegacySessionForTranscript(tab *WorkspaceTab, ctrl control
 	if current.RuntimeStatus().Running || current.RuntimeStatus().PendingPrompt {
 		return HistoryPage{}, control.ErrTurnRunning
 	}
-	if err := current.Snapshot(); err != nil {
-		return HistoryPage{}, err
+	if !historicalPreview(current) {
+		if err := current.Snapshot(); err != nil {
+			return HistoryPage{}, err
+		}
 	}
 	a.mu.RLock()
 	createOptions := desktopLegacyImportOptions(snapshotTabRuntimeLocked(tab).workspaceRoot)
@@ -140,7 +142,7 @@ func (a *App) resumeCanonicalSessionForTranscript(tab *WorkspaceTab, ctrl contro
 	}
 	workspaceChanged := canonicalWorkspaceChanged(a.tabRuntimeSnapshot(tab), workspace)
 	if current == nil || currentRef != ref || workspaceChanged {
-		if current != nil && !controllerHasActiveRuntimeWork(current) {
+		if current != nil && !controllerHasActiveRuntimeWork(current) && !historicalPreview(current) {
 			if err := current.Snapshot(); err != nil {
 				return HistoryPage{}, err
 			}

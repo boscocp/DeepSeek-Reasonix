@@ -617,3 +617,57 @@ func TestReconcileSavedTabsPreservesWhenMigrationFailed(t *testing.T) {
 		t.Fatalf("failed migration discarded saved state: changed=%v file=%+v", changed, got)
 	}
 }
+
+// A 1.38 desktop saves the chat it opened at launch as the active tab; when
+// that chat was never sent it has sidecars but no conversation, and the
+// upgrade restores a fresh chat instead of a startup error.
+func TestReconcileSavedTabsDropsNeverWrittenLegacySession(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		extra string
+		want  savedTabReconcileOutcome
+	}{
+		{name: "never sent", want: dropStalePresentation},
+		{name: "transcript", extra: ".jsonl", want: preserveRecovery},
+		{name: "event log", extra: ".events.jsonl", want: preserveRecovery},
+		{name: "turn log", extra: ".turns.jsonl", want: preserveRecovery},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := newSavedTabReconcileTestApp(t)
+			stem := filepath.Join(t.TempDir(), "20260926-091504.474467700-fake-model")
+			path := stem + ".jsonl"
+			if err := os.MkdirAll(stem+".inbox", 0o700); err != nil {
+				t.Fatal(err)
+			}
+			for name, body := range map[string]string{
+				path + ".meta":            `{"id":"20260926-091504.474467700-fake-model","scope":"global"}`,
+				stem + ".goal-state.json": `{"status":"stopped","researchMode":2,"deliveryCheckpoint":{}}`,
+				filepath.Join(stem+".inbox", "transaction.lock"): "",
+			} {
+				if err := os.WriteFile(name, []byte(body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.extra != "" {
+				if err := os.WriteFile(stem+tc.extra, []byte("{}\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			entry := desktopTabEntry{ID: "saved", Scope: "global", SessionPath: path}
+			if got := app.classifyLegacySavedTab(entry, savedTabReconcileEvidence{}); got.outcome != tc.want {
+				t.Fatalf("decision = %+v, want %s", got, tc.want)
+			}
+			// Migration may already have mapped the source to a session it archived.
+			archived := savedTabReconcileEvidence{registry: workspacestate.State{
+				SourceMappings: map[string]workspacestate.SourceMapping{"src": {Path: path, SessionID: "archived"}},
+				SessionStates:  map[string]workspacestate.SessionState{"archived": {Lifecycle: workspacestate.Archived}},
+			}}
+			if got := app.classifyLegacySavedTab(entry, archived); got.outcome != tc.want {
+				t.Fatalf("archived mapping decision = %+v, want %s", got, tc.want)
+			}
+			if _, err := os.Stat(path + ".meta"); err != nil {
+				t.Fatalf("classification touched the session files: %v", err)
+			}
+		})
+	}
+}

@@ -851,10 +851,12 @@ func (m *takeoverMirror) demote(interrupt bool) {
 		a.setTabReadOnly(tab.ID, false)
 		return
 	}
-	if err := tab.Ctrl.Snapshot(); err != nil {
-		slog.Warn("desktop: snapshot before returning takeover", "session", m.sessionPath, "err", err)
-		a.setTabReadOnly(tab.ID, false)
-		return
+	if !historicalPreview(tab.Ctrl) {
+		if err := tab.Ctrl.Snapshot(); err != nil {
+			slog.Warn("desktop: snapshot before returning takeover", "session", m.sessionPath, "err", err)
+			a.setTabReadOnly(tab.ID, false)
+			return
+		}
 	}
 	if err := m.returnLeaseForDemotion(tab); err != nil {
 		a.setTabReadOnly(tab.ID, false)

@@ -26,6 +26,7 @@ type catalogRuntimeSnapshot struct {
 	workspaceRoot    string
 	topicID          string
 	sessionPath      string
+	sessionHeadID    string
 	activity         string
 	topicTitle       string
 	topicTitleSource string

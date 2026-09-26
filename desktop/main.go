@@ -55,6 +55,11 @@ func main() {
 	if dir, ok := emitContractDir(os.Args[1:]); ok {
 		os.Exit(runEmitContract(dir))
 	}
+	// The shell asks for this before Chromium starts a child; it touches no
+	// Reasonix state, so it runs ahead of crash capture and every other mode.
+	if app, ok := stripPackageGrantsRequest(os.Args[1:]); ok {
+		os.Exit(stripPackageGrants(os.Stdout, os.Stderr, app))
+	}
 	// Internal watcher-helper entry: the host-shared skill watch service
 	// re-enters this executable so Windows directory watching never runs
 	// in-process. Dispatch before any application initialization.

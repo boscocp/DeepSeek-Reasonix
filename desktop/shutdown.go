@@ -268,7 +268,7 @@ func (a *App) runShutdown(c *desktopShutdownCoordinator) (err error) {
 	c.setPhase("saving")
 	a.lifecycle.tracker.markShutdown(reason, "saving", "in_progress")
 	for _, item := range items {
-		if item.readOnly {
+		if item.readOnly || historicalPreview(item.ctrl) {
 			continue
 		}
 		c.mu.Lock()

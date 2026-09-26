@@ -12,6 +12,7 @@ import (
 	"reasonix/desktop/internal/workspacestate"
 	"reasonix/internal/agent"
 	"reasonix/internal/session"
+	"reasonix/internal/store"
 )
 
 type savedTabReconcileOutcome string
@@ -356,6 +357,9 @@ func (a *App) classifyLegacySavedTab(entry desktopTabEntry, evidence savedTabRec
 		case workspacestate.Archived, workspacestate.Deleted:
 			fingerprint, err := desktopSourceFingerprint(path)
 			if errors.Is(err, os.ErrNotExist) {
+				if neverWritten, nwErr := legacySessionNeverWritten(path); nwErr == nil && neverWritten {
+					return savedTabReconcileDecision{outcome: dropStalePresentation, reason: "mapped_session_inactive"}
+				}
 				if _, artifactErr := legacyCleanupSourceFingerprint(path); artifactErr == nil {
 					return savedTabReconcileDecision{outcome: preserveRecovery, reason: "legacy_artifacts_present", hadRecoveryOwner: true}
 				} else if !errors.Is(artifactErr, os.ErrNotExist) {
@@ -376,6 +380,11 @@ func (a *App) classifyLegacySavedTab(entry desktopTabEntry, evidence savedTabRec
 	}
 	if savedTabHasRecoveryOwner(entry, evidence) {
 		return savedTabReconcileDecision{outcome: preserveRecovery, reason: "recovery_owner_present", hadRecoveryOwner: true}
+	}
+	if neverWritten, err := legacySessionNeverWritten(path); err != nil {
+		return savedTabReconcileDecision{outcome: preserveError, reason: "legacy_artifacts_unreadable"}
+	} else if neverWritten {
+		return savedTabReconcileDecision{outcome: dropStalePresentation, reason: "legacy_session_never_written"}
 	}
 	if _, err := legacyCleanupSourceFingerprint(path); err == nil {
 		return savedTabReconcileDecision{outcome: preserveRecovery, reason: "legacy_artifacts_present", hadRecoveryOwner: true}
@@ -576,4 +585,29 @@ func savedTabIdentityKind(entry desktopTabEntry) string {
 		return "legacy"
 	}
 	return "none"
+}
+
+// legacySessionNeverWritten reports a legacy session with no transcript, event
+// log, turn log or subagent: a chat opened and never sent. Its remaining
+// sidecars describe a conversation that does not exist, so nothing is owed.
+func legacySessionNeverWritten(sessionPath string) (bool, error) {
+	for _, path := range []string{
+		sessionPath,
+		store.SessionEventLog(sessionPath),
+		store.SessionEventLogDamaged(sessionPath),
+		store.SessionEventLogRotating(sessionPath),
+		store.SessionTurnEventLog(sessionPath),
+		store.SessionTurnEventLogDamaged(sessionPath),
+	} {
+		if _, err := os.Lstat(path); err == nil {
+			return false, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return false, err
+		}
+	}
+	subagents, err := agent.ListSubagentsByParent(filepath.Dir(sessionPath), agent.BranchID(sessionPath))
+	if err != nil {
+		return false, err
+	}
+	return len(subagents) == 0, nil
 }

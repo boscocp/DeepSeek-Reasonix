@@ -112,8 +112,8 @@ const tree: ProjectNode[] = [
 
 eq(
   defaultExpandedProjectTreeKeys(tree),
-  [],
-  "without an active tab, no folders default to expanded",
+  ["global_folder"],
+  "without an active tab, the Global folder starts expanded so its history loads",
 );
 
 eq(

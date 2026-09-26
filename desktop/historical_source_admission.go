@@ -22,6 +22,14 @@ func nativeHistoricalSource(ctrl control.SessionAPI, path, headID string) *Sessi
 	return &SessionSourceRef{HostID: localDesktopHostID, Path: path, HeadID: headID, SourceKey: desktopSourceKey(path, headID)}
 }
 
+// historicalPreview reports a runtime showing a legacy source in place. Sends
+// to it are refused, so it holds nothing the source lacks, and the source stays
+// byte-for-byte what import and cleanup fingerprinted: it is never written.
+func historicalPreview(ctrl control.SessionAPI) bool {
+	native, ok := ctrl.(*control.Controller)
+	return ok && native != nil && native.NativeLegacySession() && strings.TrimSpace(native.SessionPath()) != ""
+}
+
 // tabHistoricalSourceLocked requires a.mu; it reports a source whether the tab
 // was restored as a preparation shell or runs the source natively.
 func tabHistoricalSourceLocked(tab *WorkspaceTab) *SessionSourceRef {

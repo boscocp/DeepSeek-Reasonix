@@ -7309,7 +7309,7 @@ func (a *App) tabSessionMetaSourceCurrent(tab *WorkspaceTab, source tabSessionMe
 
 func (a *App) tabSessionMetaSnapshot(tab *WorkspaceTab, requestedPath string, useCurrent bool) (tabSessionMetaSnapshot, bool, error) {
 	source, ok := a.captureTabSessionMetaSource(tab)
-	if !ok || source.readOnly {
+	if !ok || source.readOnly || historicalPreview(source.ctrl) {
 		return tabSessionMetaSnapshot{}, false, nil
 	}
 	canonical, err := canonicalTabSessionMetaDisposition(source.sessionID, source.storedPath, requestedPath)

@@ -11,6 +11,7 @@ import (
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/provider"
+	"reasonix/internal/session"
 )
 
 func restoreHistoricalSourcePendingTab(t *testing.T) (*App, *WorkspaceTab, string) {
@@ -111,5 +112,51 @@ func TestNativeLegacyRuntimeRefusesIdentifiedSendBeforeController(t *testing.T) 
 	}
 	if errors.Is(err, control.ErrSubmissionIdentityUnavailable) {
 		t.Fatalf("send reached the controller before being refused: %v", err)
+	}
+}
+
+// Importing a previewed legacy source and moving to the imported session keeps
+// the source byte-for-byte, so the source is not reported as updated.
+func TestHistoricalPreviewImportLeavesSourceUntouched(t *testing.T) {
+	app, tab, path := restoreHistoricalSourcePendingTab(t)
+	before, err := desktopSourceFingerprint(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := app.PrepareSession(SessionSelector{Source: app.metaForTab(tab.ID).HistoricalSource})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); view.Status != "ready" && view.Status != "failed"; {
+		if time.Now().After(deadline) {
+			t.Fatalf("preparation did not settle: %+v", view)
+		}
+		time.Sleep(20 * time.Millisecond)
+		view, _ = app.GetSessionPreparation(view.OperationID)
+	}
+	if view.Status != "ready" {
+		t.Fatalf("preparation = %+v", view)
+	}
+	if _, err := app.OpenSession(session.SessionRef{HostID: view.Target.HostID, SessionID: view.Target.SessionID}); err != nil {
+		t.Fatal(err)
+	}
+	if after, err := desktopSourceFingerprint(path); err != nil || after != before {
+		t.Fatalf("opening the imported session rewrote the legacy source (err=%v)", err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		update, err := app.CheckHistoricalSourceUpdate(SessionSelector{Ref: view.Target})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if update.Status != "checking" {
+			if update.Status != "unchanged" {
+				t.Fatalf("source update = %q, want unchanged", update.Status)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("source update check did not settle")
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

@@ -74,7 +74,7 @@ func (a *App) catalogRuntimeSnapshots() []catalogRuntimeSnapshot {
 		snapshots = append(snapshots, catalogRuntimeSnapshot{
 			tabID: tab.ID,
 			scope: tab.Scope, workspaceRoot: tab.WorkspaceRoot, topicID: tab.TopicID,
-			sessionPath: tab.SessionPath, activity: tab.ActivityStatus, topicTitle: tab.TopicTitle,
+			sessionPath: tab.SessionPath, sessionHeadID: tab.SessionHeadID, activity: tab.ActivityStatus, topicTitle: tab.TopicTitle,
 			topicTitleSource: tab.topicTitleSource, ctrl: tab.Ctrl, open: open,
 		})
 	}
@@ -148,6 +148,9 @@ func (a *App) projectTreeRuntimeTopics(snapshots []catalogRuntimeSnapshot) []Pro
 		}
 		if node.Session == nil && path != "" {
 			node.SessionPath, node.Key = path, projectSessionNodeKey(scope, path)
+			// A legacy transcript is listed by its source identity; publishing the
+			// same one lets the renderer overlay this tab onto that row.
+			node.Source = &SessionSourceRef{HostID: localDesktopHostID, Path: path, HeadID: snapshot.sessionHeadID, SourceKey: desktopSourceKey(path, snapshot.sessionHeadID)}
 		}
 		if node.Session != nil {
 			workspaceID := desktopWorkspaceOwnerID(state, scope, root)

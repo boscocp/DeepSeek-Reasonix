@@ -43,6 +43,7 @@ import { RemoteWindowHost } from "./remoteWindows.js";
 import { ServiceSupervisor } from "./service.js";
 import { ShellLifecycle } from "./shellLifecycle.js";
 import { resolveServiceBinary } from "./serviceBinary.js";
+import { stripPackageGrants, unpaintedWindowCause } from "./packageGrants.js";
 import { claimShellInstance } from "./singleInstance.js";
 import { TrayHost } from "./tray.js";
 import { DEFAULT_GEOMETRY, MainWindow } from "./window.js";
@@ -138,6 +139,15 @@ function bootstrap(dataHome: string): void {
     resourcesPath: process.resourcesPath,
   });
   const serviceBinary = serviceLookup.binary;
+  const packageGrants = stripPackageGrants(
+    serviceBinary,
+    { platform: process.platform, packaged: app.isPackaged, execPath: process.execPath },
+    (line) => log.warn(line),
+  );
+  if (packageGrants?.stripped.length) {
+    log.warn(`removed app-package grants that stop sandboxed processes loading: ${packageGrants.stripped.join(", ")}`);
+  }
+  let grantCauseShown = false;
 
   let shellBuild = { version: buildVersion, channel: "", commit: "" };
   try {
@@ -169,7 +179,14 @@ function bootstrap(dataHome: string): void {
     platform: process.platform,
     icon: windowIcon,
     log,
-    onRendererFailure: (details, canReload) => graphicsRecovery.recovery.fault({ role: "renderer", ...details }, canReload),
+    onRendererFailure: (details, canReload) => {
+      const cause = mainWindow.browserWindow?.isVisible() || details.reason !== "crashed" || grantCauseShown ? null : unpaintedWindowCause(packageGrants, app.getLocale());
+      if (cause) {
+        grantCauseShown = true;
+        dialog.showErrorBox(cause.title, cause.detail);
+      }
+      return graphicsRecovery.recovery.fault({ role: "renderer", ...details }, canReload);
+    },
     onUnresponsive: () => graphicsRecovery.recovery.unresponsive(),
     onResponsive: () => graphicsRecovery.recovery.responsive(),
     onRendererLost: (reason) => {
