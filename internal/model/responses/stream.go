@@ -200,8 +200,10 @@ func (t *turn) finishItem(ctx context.Context, item *sseItem) bool {
 	return true
 }
 
+// completeCall dispatches a call once. One with no name yet, such as an
+// arguments.done event that named no item, stays open for a later event to name.
 func (t *turn) completeCall(ctx context.Context, call *streamedCall) bool {
-	if call.completed {
+	if call.completed || call.name == "" {
 		return true
 	}
 	call.completed = true
@@ -247,6 +249,9 @@ func (t *turn) applyTerminal(ctx context.Context, event sseEvent) bool {
 	if event.Type == "response.completed" {
 		t.responseID = event.Response.ID
 	}
+	if event.Type != "response.failed" && !t.closeCallsFromOutput(ctx, event.Response.Output) {
+		return false
+	}
 	if !t.reportUsage(ctx, event) {
 		return false
 	}
@@ -255,6 +260,34 @@ func (t *turn) applyTerminal(ctx context.Context, event sseEvent) bool {
 	}
 	t.failed = true
 	return t.send(ctx, provider.Chunk{Type: provider.ChunkError, Err: failureError(t.c, event.Response.Error)})
+}
+
+// closeCallsFromOutput completes the function calls the terminal response lists
+// but the stream never closed: that list is the response's own account of what
+// it issued. A call the stream already closed, matched by call id, is not sent
+// twice; one the response marks unfinished, or lists without a call id, is not
+// sent at all. Items decode one by one so an unreadable one cannot drop the rest.
+func (t *turn) closeCallsFromOutput(ctx context.Context, output []json.RawMessage) bool {
+	for _, raw := range output {
+		var item sseItem
+		if json.Unmarshal(raw, &item) != nil || item.Type != "function_call" || item.CallID == "" ||
+			(item.Status != "" && item.Status != "completed") || t.callClosed(item.CallID) {
+			continue
+		}
+		if !t.finishItem(ctx, &item) {
+			return false
+		}
+	}
+	return true
+}
+
+func (t *turn) callClosed(callID string) bool {
+	for _, call := range t.calls {
+		if call.completed && call.id == callID {
+			return true
+		}
+	}
+	return false
 }
 
 func failureError(c *client, responseError *sseError) error {

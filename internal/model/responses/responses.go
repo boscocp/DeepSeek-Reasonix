@@ -600,6 +600,7 @@ func (i *sseItem) UnmarshalJSON(data []byte) error {
 
 type sseResponse struct {
 	ID                string            `json:"id"`
+	Output            []json.RawMessage `json:"output"`
 	Usage             *sseUsage         `json:"usage"`
 	Error             *sseError         `json:"error"`
 	IncompleteDetails incompleteDetails `json:"incomplete_details"`
