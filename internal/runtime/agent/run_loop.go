@@ -382,7 +382,7 @@ func (a *Agent) recordTruncationFact(boundary responseBoundary) bool {
 	if boundary.fact == "" {
 		return false
 	}
-	a.sess.conversation.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(boundary.fact)})
+	a.sess.conversation.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(boundary.fact), HostAuthored: true})
 	return true
 }
 
@@ -605,14 +605,14 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 				return false, fmt.Errorf("model finished without a visible final answer %d times", state.emptyFinalBlocks)
 			}
 			a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeEmptyFinal, Text: emptyFinalNotice(), Detail: emptyFinalNoticeDetail(a.svc.prov.Name(), usage, len(reasoning))})
-			a.sess.conversation.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(emptyFinalRetryMessage())})
+			a.sess.conversation.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(emptyFinalRetryMessage()), HostAuthored: true})
 			return true, nil
 		}
 	}
 	if state.executorHandoff && !state.usedAnyTool && state.handoffNudges < maxExecutorHandoffNudges && a.shouldNudgeExecutorHandoff() {
 		state.handoffNudges++
 		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeExecutorHandoff, Text: executorHandoffNoticeText(), Detail: "executor answered without taking any action; nudging it to use its tools"})
-		a.sess.conversation.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(executorHandoffRetryMessage())})
+		a.sess.conversation.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(executorHandoffRetryMessage()), HostAuthored: true})
 		return true, nil
 	}
 	if readiness.applies {
