@@ -20,7 +20,10 @@ window.addEventListener("message", event => {
     if (data.type === "stop") { if (recorder?.state === "recording") recorder.stop(); return; }
     if (data.type !== "start" || recorder) return;
     try {
-      stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 25 }, audio: false });
+      // No frameRate: a static page sends only its first frame and the refresh a
+      // new sink asks for, and a capped track drops that refresh when it trails
+      // the first by less than a frame period. The paint interval sets output rate.
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
       if (cancelled) { cleanup(); return; }
       const input = document.createElement("video"); input.muted = true; input.srcObject = stream;
       await input.play();
