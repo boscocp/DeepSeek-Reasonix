@@ -93,6 +93,8 @@ export const EN_KERNEL: Record<string, string> = {
   "该来源正在使用中，请先切换模型再删除": "This source is in use — switch models before deleting it",
   "请为该来源填写名称": "Give this source a name",
   "名称只能包含字母、数字、点、连字符和下划线": "A name may use letters, digits, dot, dash and underscore only",
+  "已经有名为「{name}」的连接了，换一个名称": "A connection named “{name}” already exists; pick another name",
+  "读不到配置文件，没法安全地选择密钥存放位置，请检查配置后重试": "The configuration could not be read, so there is no safe place to store the key; check the config and try again",
   "请填写接口地址": "Enter an endpoint address",
   "无法识别「{kind}」这种接入方式": "“{kind}” is not a protocol this knows",
   "请至少选择一个模型": "Pick at least one model",

@@ -7,29 +7,23 @@ import (
 	"reasonix/internal/contract/config"
 )
 
-// keyEnvForNewSource decides which credential slot a newly added source writes.
-// A blank key at a host that already has one means another door onto that
-// account, so the two share a slot — a second slot would leave the new entry
-// unauthenticated and the pair reading as two accounts. A supplied key is a
-// different account there, and keeps its own slot so it overwrites nothing.
-func keyEnvForNewSource(name, baseURL, apiKey string) string {
-	own := providerKeyEnv(name)
-	if strings.TrimSpace(apiKey) != "" {
-		return own
-	}
-	cfg, err := config.Load()
-	if err != nil || cfg == nil {
-		return own
-	}
+// keyEnvForNewSource decides which credential slot a new source writes. A blank
+// key at a host that already has one is another door onto that account, so the
+// two share a slot; replacing an entry at its own host keeps that entry's slot.
+// Anything else gets a slot nothing holds, so it neither overwrites a key nor
+// reads one stored for another endpoint.
+func keyEnvForNewSource(cfg *config.Config, name, baseURL, apiKey string, replace bool) (string, error) {
 	host := vendorOf(baseURL)
-	if host == "" {
-		return own
+	if old, ok := cfg.Provider(name); replace && ok && host != "" && vendorOf(old.BaseURL) == host && strings.TrimSpace(old.APIKeyEnv) != "" {
+		return old.APIKeyEnv, nil
 	}
-	for i := range cfg.Providers {
-		p := &cfg.Providers[i]
-		if vendorOf(p.BaseURL) == host && strings.TrimSpace(p.APIKeyEnv) != "" {
-			return p.APIKeyEnv
+	if strings.TrimSpace(apiKey) == "" && host != "" {
+		for i := range cfg.Providers {
+			p := &cfg.Providers[i]
+			if p.Name != name && vendorOf(p.BaseURL) == host && strings.TrimSpace(p.APIKeyEnv) != "" {
+				return p.APIKeyEnv, nil
+			}
 		}
 	}
-	return own
+	return config.FreeAPIKeyEnvFor(name, cfg.Providers)
 }

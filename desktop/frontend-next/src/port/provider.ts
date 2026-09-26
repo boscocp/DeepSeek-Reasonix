@@ -185,6 +185,8 @@ export interface ProviderDraft {
   reasoningProtocol?: string;
   headers?: Record<string, string>;
   extraBody?: Record<string, unknown>;
+  // Saving under a name already configured is refused unless this is set.
+  replace?: boolean;
 }
 
 // What the opening sequence still owes a machine with no usable key. GET

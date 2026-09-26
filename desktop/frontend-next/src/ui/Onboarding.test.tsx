@@ -38,6 +38,9 @@ describe("the protocol confirmed during first-run setup", () => {
     expect(save).toHaveBeenCalledWith(expect.objectContaining({
       kind: "anthropic",
       baseUrl: "https://api.deepseek.com/anthropic",
+      // A fresh install already names the deepseek entry this fills in, and the
+      // kernel refuses a same-named add that does not say it replaces.
+      replace: true,
     }));
   });
 });
