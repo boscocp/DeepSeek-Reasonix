@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	fileencoding "reasonix/internal/base/fileutil/encoding"
+	"reasonix/internal/base/fileutil/encoding/encodingtest"
 	"reasonix/internal/base/testenv"
 )
 
@@ -228,7 +229,7 @@ func TestDiscoverDecodesGB18030PrimaryDoc(t *testing.T) {
 	proj := testenv.TempDir(t)
 	mustMkdir(t, filepath.Join(proj, ".git"))
 	body := "# 项目约定\n\n始终使用中文回答。"
-	if err := os.WriteFile(filepath.Join(proj, "AGENTS.md"), fileencoding.Encode(body, fileencoding.GB18030), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(proj, "AGENTS.md"), encodingtest.MustEncode(body, fileencoding.GB18030), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

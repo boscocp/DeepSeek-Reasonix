@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	fileencoding "reasonix/internal/base/fileutil/encoding"
+	"reasonix/internal/base/fileutil/encoding/encodingtest"
 	"reasonix/internal/base/testenv"
 )
 
@@ -87,7 +88,7 @@ func TestCustomFileOverridesBuiltinAndParses(t *testing.T) {
 func TestResolveDecodesGB18030CustomFile(t *testing.T) {
 	dir := testenv.TempDir(t)
 	body := "---\nname: concise-cn\ndescription: 中文风格\n---\n请用中文简洁回答。"
-	if err := os.WriteFile(filepath.Join(dir, "concise-cn.md"), fileencoding.Encode(body, fileencoding.GB18030), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "concise-cn.md"), encodingtest.MustEncode(body, fileencoding.GB18030), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

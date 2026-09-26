@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	fileencoding "reasonix/internal/base/fileutil/encoding"
+	"reasonix/internal/base/fileutil/encoding/encodingtest"
 	"reasonix/internal/base/testenv"
 )
 
@@ -123,7 +124,7 @@ func TestGrepSkipsGitignored(t *testing.T) {
 
 func TestGrepDecodesGB18030Gitignore(t *testing.T) {
 	dir := mkRepo(t)
-	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), fileencoding.Encode("秘密.txt\n", fileencoding.GB18030), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), encodingtest.MustEncode("秘密.txt\n", fileencoding.GB18030), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFileT(t, filepath.Join(dir, "秘密.txt"), "NEEDLE ignored\n")

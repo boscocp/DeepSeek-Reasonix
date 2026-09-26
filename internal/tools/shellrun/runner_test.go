@@ -205,9 +205,10 @@ func TestRunForegroundLaunchFailure(t *testing.T) {
 
 func TestRunForegroundOutputTailBounded(t *testing.T) {
 	payload := strings.Repeat("中文", 3000)
-	// Keep the command under typical argv length limits.
+	// Keep the command under typical argv length limits, on a character
+	// boundary: the child's output ends where it stopped writing, not at a cut.
 	if len(payload) > 4000 {
-		payload = payload[:4000]
+		payload = strings.ToValidUTF8(payload[:4000], "")
 	}
 	sh := sandbox.ResolveShell("auto", "", nil)
 	var command string

@@ -141,7 +141,11 @@ func editLegacyDeepSeekProtocolFile(path, target string, automatic bool) (bool, 
 	if err != nil || !changed {
 		return changed, err
 	}
-	if err := fileutil.AtomicWriteFile(resolved, fileencoding.Encode(next, encoding), info.Mode().Perm()); err != nil {
+	encoded, err := fileencoding.Encode(next, encoding)
+	if err != nil {
+		return false, err
+	}
+	if err := fileutil.AtomicWriteFile(resolved, encoded, info.Mode().Perm()); err != nil {
 		return false, err
 	}
 	return true, nil

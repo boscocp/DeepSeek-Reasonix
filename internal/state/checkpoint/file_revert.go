@@ -257,7 +257,9 @@ func (s *Store) stageRestore(t *TransactionTarget, rev FileRevision, abs string)
 		if rev.Content == nil {
 			return err
 		}
-		data = fileenc.Encode(*rev.Content, s.revisionEncoding(rev, abs))
+		if data, err = fileenc.Encode(*rev.Content, s.revisionEncoding(rev, abs)); err != nil {
+			return err
+		}
 	}
 	mode := os.FileMode(0o644)
 	if rev.Mode != 0 {

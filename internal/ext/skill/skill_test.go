@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	fileencoding "reasonix/internal/base/fileutil/encoding"
+	"reasonix/internal/base/fileutil/encoding/encodingtest"
 	"reasonix/internal/base/testenv"
 	"reasonix/internal/contract/config"
 )
@@ -246,7 +247,7 @@ func TestListDecodesGB18030SkillFile(t *testing.T) {
 	home := testenv.TempDir(t)
 	root := testenv.TempDir(t)
 	body := "---\ndescription: 中文技能\n---\n用中文处理任务。"
-	writeSkillBytes(t, root, filepath.Join("cn", SkillFile), fileencoding.Encode(body, fileencoding.GB18030))
+	writeSkillBytes(t, root, filepath.Join("cn", SkillFile), encodingtest.MustEncode(body, fileencoding.GB18030))
 
 	st := New(Options{HomeDir: home, CustomPaths: []string{root}, DisableBuiltins: true})
 	skills := st.List()

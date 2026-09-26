@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	fileencoding "reasonix/internal/base/fileutil/encoding"
+	"reasonix/internal/base/fileutil/encoding/encodingtest"
 	"reasonix/internal/base/testenv"
 )
 
@@ -27,7 +28,7 @@ func TestScanGitConfigExcludesDecodesGB18030Path(t *testing.T) {
 	path := filepath.Join(dir, ".gitconfig")
 	want := filepath.Join(dir, "中文忽略规则.txt")
 	body := "[core]\n\texcludesFile = " + want + "\n"
-	if err := os.WriteFile(path, fileencoding.Encode(body, fileencoding.GB18030), 0o644); err != nil {
+	if err := os.WriteFile(path, encodingtest.MustEncode(body, fileencoding.GB18030), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

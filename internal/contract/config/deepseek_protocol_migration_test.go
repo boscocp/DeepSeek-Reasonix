@@ -12,6 +12,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	fileencoding "reasonix/internal/base/fileutil/encoding"
+	"reasonix/internal/base/fileutil/encoding/encodingtest"
 	"reasonix/internal/base/testenv"
 )
 
@@ -301,7 +302,7 @@ base_url = "https://api.deepseek.com"
 model = "deepseek-v4-flash"
 api_key_env = "DEEPSEEK_API_KEY"
 `
-	encoded := fileencoding.Encode(raw, fileencoding.UTF16LE)
+	encoded := encodingtest.MustEncode(raw, fileencoding.UTF16LE)
 	if err := os.WriteFile(path, encoded, 0o600); err != nil {
 		t.Fatal(err)
 	}
