@@ -231,10 +231,12 @@ func TestHistoricalRegressionShutdownDrainsStartupWorker(t *testing.T) {
 	app := newHistoricalLifecycleApp(t)
 	c := &app.historicalImports
 	entered, proceed := make(chan struct{}), make(chan struct{})
-	var once sync.Once
+	var once, enterOnce sync.Once
 	release := func() { once.Do(func() { close(proceed) }) }
 	t.Cleanup(release)
-	app.projectTreeChangedHook = func() { close(entered); <-proceed }
+	// The startup worker and the catalog discovery it starts both publish a
+	// tree change; either may arrive first, and both are workers stop drains.
+	app.projectTreeChangedHook = func() { enterOnce.Do(func() { close(entered) }); <-proceed }
 	app.startDesktopSessionMigration(t.Context())
 	<-app.desktopMigrationDone
 	app.markTabsRestored()
