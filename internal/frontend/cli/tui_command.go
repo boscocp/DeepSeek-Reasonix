@@ -112,6 +112,7 @@ func runTUI(args []string, version string) int {
 
 	err = tui.Run(ctx, tui.Options{
 		Client:      &tui.Client{HTTP: hub.InProcessClient(), Base: tuiBase},
+		Version:     version,
 		Prompt:      strings.Join(f.fs.Args(), " "),
 		Restore:     resumed != nil,
 		PickSession: *f.resume == resumePickerSentinel || ambiguous != nil,

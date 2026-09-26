@@ -91,3 +91,21 @@ func TestPickerNarrowingEndsWithAFailedFirstFetch(t *testing.T) {
 		t.Fatalf("a later picker kept the start's narrowing: %+v", got)
 	}
 }
+
+func TestVersionCommandShowsInstalledVersion(t *testing.T) {
+	m, k := testModel(t)
+	m.opts.Version = "v2.3.4"
+	m.composer.SetValue("/ver")
+	m.onCompletion(completionMsg{line: "/ver"})
+	if m.menu == nil || m.menu.c.Items[0].Label != "/version" {
+		t.Fatalf("menu = %+v", m.menu)
+	}
+	run(m, press(m, "enter"))
+	run(m, press(m, "enter"))
+	if got := m.tr.Items[len(m.tr.Items)-1].Text; got != "reasonix v2.3.4" {
+		t.Fatalf("version notice = %q", got)
+	}
+	if strings.Contains(strings.Join(k.seen(), "\n"), "POST /submit") {
+		t.Fatal("/version was sent to the kernel")
+	}
+}

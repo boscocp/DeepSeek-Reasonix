@@ -16,6 +16,8 @@ import (
 // Options is what a TUI session starts with.
 type Options struct {
 	Client *Client
+	// Version is the build version passed to the CLI launcher.
+	Version string
 	// Prompt, when set, is sent as the first message.
 	Prompt string
 	// Restore reads the session back from /history before the first frame:
