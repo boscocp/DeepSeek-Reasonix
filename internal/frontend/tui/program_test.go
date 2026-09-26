@@ -386,3 +386,23 @@ func TestPastedImageSendsItsReference(t *testing.T) {
 		t.Fatalf("submit missing the reference:\n%s", calls)
 	}
 }
+
+// ui.show_turn_usage = false keeps each request's receipt off the screen,
+// both while the answer above it still streams and once it has settled.
+func TestHiddenTurnUsageNeverReachesTheScreen(t *testing.T) {
+	usage := eventwire.Event{Kind: "usage", Usage: &eventwire.Usage{TotalTokens: 1200, PromptTokens: 1000, CompletionTokens: 200}}
+	for _, hide := range []bool{false, true} {
+		m, _ := testModel(t)
+		m.opts.HideTurnUsage = hide
+		m.tr.AddUser("go")
+		apply(m, eventwire.Event{Kind: "turn_started"}, eventwire.Event{Kind: "text", Text: "working"}, usage)
+		live := m.View().Content
+		apply(m, eventwire.Event{Kind: "message", Text: "working"}, eventwire.Event{Kind: "turn_done"})
+		settled := strings.Join(m.content(nil), "\n")
+		for when, screen := range map[string]string{"streaming": live, "settled": settled} {
+			if got := strings.Contains(screen, "1.2K tok"); got == hide {
+				t.Errorf("hide=%v %s: receipt shown = %v\n%s", hide, when, got, screen)
+			}
+		}
+	}
+}
