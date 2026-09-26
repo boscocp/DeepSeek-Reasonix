@@ -75,6 +75,6 @@ jobs:
               } catch (error) {
                 failed.push(`${issue}: ${error.message}`);
               }
-              await sleep(Math.max(5, Number(process.env.INTERVAL) || 20) * 1000);
+              await sleep(Math.max(1, Number(process.env.INTERVAL) || 20) * 1000);
             }
             if (failed.length) core.setFailed(`not done:\n${failed.join('\n')}`);
