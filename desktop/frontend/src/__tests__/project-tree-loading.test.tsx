@@ -225,6 +225,21 @@ try {
   console.log("  PASS  empty and single-row exhausted pages refresh quietly and stop loading");
 
   await mount();
+  const stamped = (row: ProjectNode, at: number): ProjectNode => ({ ...row, createdAt: at, lastActivityAt: at });
+  rows[roots[0]] = rows[roots[0]].map((row, n) => stamped(row, 1_000 - n));
+  await event();
+  const residentWindow = labels().filter(label => label?.startsWith("A-"));
+  assert.deepEqual(residentWindow, ["A-0", "A-1", "A-2", "A-3", "A-4"], "a busy folder starts from a complete five-row window");
+  rows[roots[0]] = [stamped(topic("A-fresh"), 2_000), ...rows[roots[0]]];
+  intercept = req => req.workspaceRoot === roots[0] ? Promise.resolve({ ...page(req), complete: false }) : undefined;
+  await event();
+  assert.deepEqual(labels().filter(label => label?.startsWith("A-")), ["A-fresh", ...residentWindow.slice(0, 4)],
+    "a conversation discovered while the catalog is incomplete is accepted into the window");
+  intercept = undefined;
+  await unmount();
+  console.log("  PASS  an incomplete refresh keeps a new conversation visible in a busy folder");
+
+  await mount();
   rows[roots[0]] = Array.from({ length: 70 }, (_, i) => topic(`Search-${i}`));
   await search("Search-"); await advance();
   const searchRefresh = deferred<ProjectTopicPage>();
