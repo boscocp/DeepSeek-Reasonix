@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -360,5 +361,40 @@ func TestSendWithRetryStopsWhenCallerDeadlineExpires(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("calls = %d, want no retry once the caller's own deadline expired", calls)
+	}
+}
+
+// A server that never answers times out the same way on every attempt — a slow
+// local prefill restarts from scratch — so it gets one retry, not the full
+// budget of MaxRetries windows.
+func TestSendWithRetryGivesAHeaderTimeoutOneRetry(t *testing.T) {
+	var mu sync.Mutex
+	calls := 0
+	release := make(chan struct{})
+	defer close(release)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer srv.Close()
+	cl := &http.Client{Transport: &http.Transport{ResponseHeaderTimeout: 50 * time.Millisecond}}
+	newReq := func(ctx context.Context) (*http.Request, error) {
+		return http.NewRequestWithContext(ctx, http.MethodPost, srv.URL, nil)
+	}
+
+	_, err := SendWithRetry(WithRetryLimit(context.Background(), 3), cl, SendOptions{Provider: "p"}, newReq)
+	var netErr net.Error
+	if !errors.As(err, &netErr) || !netErr.Timeout() {
+		t.Fatalf("err = %v, want a transport timeout", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 2 {
+		t.Fatalf("calls = %d, want the timed-out attempt plus exactly one retry", calls)
 	}
 }

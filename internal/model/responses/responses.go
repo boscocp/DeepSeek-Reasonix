@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	defaultStreamIdleTimeout     = 120 * time.Second
+	defaultStreamIdleTimeout     = provider.StreamIdleTimeout
 	maxReplayableSearchItemBytes = 512 * 1024
 )
 
@@ -151,7 +151,7 @@ func New(cfg Config) provider.Provider {
 	httpClient := &http.Client{Timeout: 300 * time.Second}
 	if built, err := netclient.NewHTTPClient(cfg.Proxy, netclient.TransportOptions{
 		DialTimeout: 30 * time.Second, KeepAlive: 30 * time.Second,
-		TLSHandshakeTimeout: 15 * time.Second, ResponseHeaderTimeout: 120 * time.Second,
+		TLSHandshakeTimeout: 15 * time.Second, ResponseHeaderTimeout: provider.StreamIdleTimeout,
 	}); err == nil {
 		httpClient = built
 	}

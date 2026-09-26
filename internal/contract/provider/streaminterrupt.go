@@ -3,6 +3,7 @@ package provider
 import (
 	"errors"
 	"io"
+	"time"
 
 	"reasonix/internal/base/neterr"
 )
@@ -14,6 +15,11 @@ const (
 	StreamInterruptPrematureEOF    = "premature_eof"
 	StreamInterruptIdleTimeout     = "idle_timeout"
 )
+
+// StreamIdleTimeout is how long a model call may send nothing — before its
+// response headers or between stream events — before it is read as dropped.
+// A local model prefilling a long context is silent for minutes at a time.
+const StreamIdleTimeout = 300 * time.Second
 
 // StreamInterruptedError marks a sampling attempt that never reached a clean
 // provider terminal event and is therefore uncommitted; the Agent may replay
