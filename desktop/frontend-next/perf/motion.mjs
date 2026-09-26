@@ -11,15 +11,25 @@ const check = (name, ok, detail = "") => {
 
 const browser = await chromium.launch();
 
+// What a loop reports is where it is drawn: the run mark reports the turn, a
+// call's state mark (or its folded group's) reports that call. Anything else
+// looping while work runs is decoration.
 const runningLoops = (page) => page.evaluate(() =>
-  document.getAnimations({ subtree: true }).filter((a) => {
-    if (a.playState !== "running" || a.effect?.getTiming().iterations !== Infinity) return false;
+  document.getAnimations({ subtree: true }).flatMap((a) => {
+    if (a.playState !== "running" || a.effect?.getTiming().iterations !== Infinity) return [];
     const el = a.effect?.target;
-    if (!(el instanceof Element)) return false;
+    if (!(el instanceof Element)) return [];
     const box = el.getBoundingClientRect();
     const s = getComputedStyle(el);
-    return s.visibility !== "hidden" && s.display !== "none" && box.width > 0 && box.height > 0;
-  }).map((a) => a.animationName),
+    if (s.visibility === "hidden" || s.display === "none" || box.width === 0 || box.height === 0) return [];
+    const call = el.closest(".call[data-running] .tool-state, .activity-group[data-running] > summary .activity-status-icon");
+    const owner = el.closest(".rmark") ? "run" : call ? "call" : "";
+    return [{ name: a.animationName, owner, target: el.closest(".rmark, .tool-state, .activity-status-icon") }];
+  }).map((l, _, all) => ({
+    name: l.name, owner: l.owner,
+    shared: all.filter((o) => o.target && o.target === l.target).length,
+    calls: document.querySelectorAll(".call[data-running]").length,
+  })),
 );
 
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: "dark" });
@@ -56,7 +66,10 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(120);
 const loops = await runningLoops(page);
-check("运行态只保留两个核心循环信号", loops.length <= 2, loops.join(", "));
+const names = loops.map((l) => `${l.name}@${l.owner || "?"}`).join(", ");
+check("运行态的循环只报告在跑的事，没有装饰", loops.every((l) => l.owner), names);
+check("运行态的轮次记号只有一个", loops.filter((l) => l.owner === "run").every((l, _, run) => l.shared === run.length), names);
+check("每个在跑的调用至多一个循环记号", loops.filter((l) => l.owner === "call").length <= (loops[0]?.calls ?? 0), names);
 
 await page.evaluate(() => window.__feed({
   kind: "approval_request",
@@ -110,7 +123,7 @@ await reduced.evaluate(() => {
 });
 await reduced.waitForTimeout(80);
 const stillLoops = await runningLoops(reduced);
-check("减少动态效果时没有循环动画", stillLoops.length === 0, stillLoops.join(", "));
+check("减少动态效果时没有循环动画", stillLoops.length === 0, stillLoops.map((l) => l.name).join(", "));
 
 await browser.close();
 console.log(fails.length ? `\n失败 ${fails.length} 项：\n- ${fails.join("\n- ")}` : "\n动效节奏、窄屏与减弱动态全部通过。");
