@@ -320,12 +320,6 @@ export function ProjectTree({
       const items = projectTreeWithoutTopics(asArray(page.items), currentArchiveTombstones());
       const completeBaseline = topicCompletePageRef.current[listKey];
       const preserveCompletePage = page.complete === false && completeBaseline?.signature === requestSignature;
-      if (preserveCompletePage && !appendPage) {
-        releaseReadSnapshot(page.snapshotId);
-        updateTopicPageState(listKey, { ...topicPageStateRef.current[listKey], loading: false });
-        emitRequest("completed", { status: "ok", itemCount: items.length });
-        return;
-      }
       const incomingKeys = items.map((item) => item.key);
       const previousKeys = topicPageStateRef.current[listKey]?.itemKeys ?? [];
       const itemKeys = appendPage || preserveCompletePage
