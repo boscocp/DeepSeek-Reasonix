@@ -50,3 +50,19 @@ func TestFactoryUsesRequestURLAndIgnoresLegacyChatURL(t *testing.T) {
 		t.Fatalf("legacy requestURL = %q, want base-derived endpoint", got)
 	}
 }
+
+func TestStreamIgnoresRequestURLThatRepeatsBaseURL(t *testing.T) {
+	var got string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.RequestURI()
+		writeEvents(w, `{"type":"response.completed","response":{"id":"resp_1","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`)
+	}))
+	defer server.Close()
+
+	collect(t, New(Config{
+		Name: "relay", APIKey: "key", BaseURL: server.URL + "/api/v1", RequestURL: server.URL + "/api/v1/", Model: "m", Mode: "stateless",
+	}), provider.Request{Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}})
+	if got != "/api/v1/responses" {
+		t.Fatalf("POST %q, want /api/v1/responses", got)
+	}
+}

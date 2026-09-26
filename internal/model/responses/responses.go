@@ -157,7 +157,7 @@ func New(cfg Config) provider.Provider {
 	}
 	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")
 	requestURL := strings.TrimSpace(cfg.RequestURL)
-	if requestURL == "" {
+	if requestURL == "" || provider.EndpointOverrideRepeatsBase(requestURL, baseURL) {
 		requestURL = baseURL + "/responses"
 	}
 	return &client{
