@@ -1020,18 +1020,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// nesting out of the picture). It registers into the same reg the
 	// executor uses, so the model surfaces it like any other tool.
 	resolveSubagentProvider := func(modelRef, effort string) (provider.Provider, *provider.Pricing, int, error) {
-		me := *entry
-		selectedRef := modelRefFromEntry(entry)
-		if strings.TrimSpace(modelRef) != "" {
-			if resolved, ok := cfg.ResolveModel(modelRef); ok {
-				me = *resolved
-				selectedRef = modelRefFromEntry(resolved)
-			} else if effectiveResolver != nil {
-				me = *syntheticEntryFromResolver(effectiveResolver, modelRef)
-				selectedRef = modelRef
-			} else {
-				return nil, nil, 0, fmt.Errorf("unknown model %q", modelRef)
-			}
+		me, selectedRef, err := subagentModelSelection(cfg, effectiveResolver, entry, modelRef)
+		if err != nil {
+			return nil, nil, 0, err
 		}
 		var effortOverride *string
 		if strings.TrimSpace(effort) != "" {
@@ -2471,7 +2462,9 @@ func subagentEffectiveIdentity(cfg *config.Config, resolver provider.Resolver, b
 	}
 	ref := strings.TrimSpace(modelRef)
 	explicit := ref != ""
-	if !explicit {
+	if explicit {
+		ref = childModelRef(cfg, base, ref)
+	} else {
 		ref = strings.TrimSpace(baseModelRef)
 	}
 	if explicit && cfg != nil && ref != "" {
