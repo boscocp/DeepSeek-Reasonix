@@ -745,14 +745,16 @@ jobs:
             --cache-control "public, max-age=300, stale-if-error=86400"
           echo "Studio catalog -> $VERSION"
 
-  # The CLI's install channels. This line is the only one that publishes the
-  # CLI, so npm's `reasonix` and the Homebrew tap follow it. They run once the
-  # release exists, because the cask points at its archives. A candidate goes
-  # to npm's `next` tag and leaves the tap alone: brew has no prerelease
-  # channel, so a candidate cask would become the default install.
+  # The CLI's install channels, npm's `reasonix` and the Homebrew tap. The 1.x
+  # line owns them until this one takes the CLI over; the repository variable
+  # STUDIO_PUBLISHES_CLI=true hands them here. They run once the release
+  # exists, because the cask points at its archives. A candidate goes to npm's
+  # `next` tag and leaves the tap alone: brew has no prerelease channel, so a
+  # candidate cask would become the default install.
   cli-channels:
     name: publish the CLI to npm and Homebrew
     needs: [resolve, publish]
+    if: vars.STUDIO_PUBLISHES_CLI == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
