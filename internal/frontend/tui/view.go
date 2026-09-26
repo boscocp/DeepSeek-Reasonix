@@ -96,6 +96,7 @@ func (m *model) liveLines() []string {
 				out = append(out, strings.Split(renderSayPart(rest, shown == 0, m.width, m.scrollbarHidden()), "\n")...)
 			}
 		case (it.Kind == ItemApproval || it.Kind == ItemAsk) && it.Verdict == "":
+		case m.hidden(it):
 		default:
 			if r := renderItem(it, m.width, 0, m.scrollbarHidden()); r != "" {
 				out = append(out, strings.Split(r, "\n")...)
