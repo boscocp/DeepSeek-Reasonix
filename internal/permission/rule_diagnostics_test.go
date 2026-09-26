@@ -77,3 +77,14 @@ func TestUnmatchableRuleSuggestionsParseBack(t *testing.T) {
 		}
 	}
 }
+
+// TestUnmatchableRulesCatchesEveryWhitespace keeps the check and the invariant
+// it rests on asking the same question: a tool name broken across lines is as
+// unmatchable as one with a plain space.
+func TestUnmatchableRulesCatchesEveryWhitespace(t *testing.T) {
+	for _, raw := range []string{"git\tstatus", "git\nstatus", "git status"} {
+		if got := UnmatchableRules(nil, nil, []string{raw}); len(got) != 1 {
+			t.Errorf("UnmatchableRules(%q) returned %d findings, want 1", raw, len(got))
+		}
+	}
+}

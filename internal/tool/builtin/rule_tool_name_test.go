@@ -3,6 +3,7 @@ package builtin
 import (
 	"strings"
 	"testing"
+	"unicode"
 
 	"reasonix/internal/tool"
 )
@@ -18,7 +19,7 @@ func TestNoBuiltinToolNameHasWhitespace(t *testing.T) {
 		t.Fatal("no built-in tools registered; the invariant would pass vacuously")
 	}
 	for _, tl := range builtins {
-		if strings.ContainsAny(tl.Name(), " \t\r\n") {
+		if strings.IndexFunc(tl.Name(), unicode.IsSpace) >= 0 {
 			t.Errorf("built-in tool name contains whitespace: %q", tl.Name())
 		}
 	}
