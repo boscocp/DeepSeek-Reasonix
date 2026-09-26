@@ -799,3 +799,33 @@ test("the shell leaves for its X11 relaunch before it claims the instance lock",
   }
   assert.deepEqual(calls, [["relaunch", ["--ozone-platform=x11", ...process.argv.slice(1)]], ["exit", 0]]);
 });
+
+test("F11 toggles full screen where no application menu binds it", () => {
+  const { installFullScreenKey } = require("../src/fullscreen.js");
+  const press = (over) => ({ type: "keyDown", key: "F11", control: false, alt: false, shift: false, meta: false, isAutoRepeat: false, ...over });
+  const rig = (platform) => {
+    let handler = null;
+    const state = { full: false, prevented: 0 };
+    const contents = { on: (name, fn) => { if (name === "before-input-event") handler = fn; } };
+    const window = { isFullScreen: () => state.full, setFullScreen: (v) => { state.full = v; } };
+    installFullScreenKey(contents, window, platform);
+    const send = (input) => handler?.({ preventDefault: () => { state.prevented += 1; } }, input);
+    return { state, send, bound: () => handler !== null };
+  };
+
+  for (const platform of ["linux", "win32"]) {
+    const { state, send } = rig(platform);
+    send(press());
+    assert.equal(state.full, true, `${platform}: F11 did not enter full screen`);
+    send(press({ type: "keyUp" }));
+    send(press({ isAutoRepeat: true }));
+    send(press({ control: true }));
+    send(press({ key: "F10" }));
+    assert.equal(state.full, true, `${platform}: something other than a fresh F11 press toggled`);
+    send(press());
+    assert.equal(state.full, false, `${platform}: F11 did not leave full screen`);
+    assert.equal(state.prevented, 2);
+  }
+  // macOS keeps its own full-screen control on the window menu and title bar.
+  assert.equal(rig("darwin").bound(), false);
+});
