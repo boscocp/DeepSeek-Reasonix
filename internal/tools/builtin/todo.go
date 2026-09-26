@@ -46,7 +46,7 @@ func (todoWrite) Schema() json.RawMessage {
         "content":{"type":"string","description":"Imperative description of the task."},
         "status":{"type":"string","enum":["pending","in_progress","completed"],"description":"Task state. Keep at most one in_progress."},
         "activeForm":{"type":"string","description":"Present-continuous form shown while the task is in progress (e.g. \"Running tests\")."},
-        "level":{"type":"integer","enum":[0,1],"description":"Nesting level: 0 = phase/milestone, 1 = a sub-step of the phase above it. Omit for a flat list."},
+        "level":{"type":"integer","minimum":0,"maximum":1,"description":"0 = phase/milestone, 1 = a sub-step of the phase above it. Omit for a flat list."},
         "step_id":{"type":"string","description":"Stable identity for this item, e.g. \"plan_step_02\". Copy it verbatim from the item's previous entry so completions stay attached across retitles, insertions, and reordering; use a fresh unique id for a genuinely new item."}
       },
       "required":["content","status"]
