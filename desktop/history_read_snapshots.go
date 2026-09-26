@@ -118,7 +118,9 @@ func (a *App) searchHistorySnapshot(req HistorySearchRequest, targetPath string)
 	req.Query = strings.TrimSpace(req.Query)
 	req.Kinds = append([]string(nil), req.Kinds...)
 	if len(req.Kinds) == 0 {
-		req.Kinds = []string{"user_text", "assistant_text", "tool_input", "tool_error"}
+		// The panel searches what the user saw. Every tool result is indexed as
+		// tool_output, errors included, so adding tool_error would list them twice.
+		req.Kinds = []string{"user_text", "assistant_text", "tool_input", "tool_output"}
 	}
 	sort.Strings(req.Kinds)
 	key := req

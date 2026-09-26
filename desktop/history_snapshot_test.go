@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -210,3 +211,127 @@ type snapshotSwitchController struct {
 }
 
 func (c *snapshotSwitchController) SessionDir() string { return c.dir }
+
+func TestHistoryContentSearchDefaultsCoverEveryToolResultOnce(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	dir := config.SessionDir()
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "tools.jsonl")
+	source := agent.NewSession("")
+	source.Add(provider.Message{Role: provider.RoleUser, Content: "list the servers"})
+	source.Add(provider.Message{Role: provider.RoleAssistant, ToolCalls: []provider.ToolCall{
+		{ID: "ok", Name: "mcp_list", Arguments: "{}"},
+		{ID: "bad", Name: "mcp_list", Arguments: "{}"},
+	}})
+	source.Add(provider.Message{Role: provider.RoleTool, ToolCallID: "ok", Name: "mcp_list", Content: "servers: alpha zulumarker"})
+	source.Add(provider.Message{Role: provider.RoleTool, ToolCallID: "bad", Name: "mcp_list", Content: "error: quebecmarker unreachable"})
+	if err := source.SaveSnapshot(path); err != nil {
+		t.Fatal(err)
+	}
+	app := NewApp()
+	app.ctx = t.Context()
+	t.Cleanup(app.closeSessionServices)
+	installSessionCatalogForTest(t, app, dir, "global", "")
+	root := historycatalog.Root{Path: dir, Scope: "global", Source: "global"}
+	if err := history.RebuildSharedCatalog(t.Context(), []historycatalog.Root{root}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = history.CloseSharedCatalog(context.Background()) })
+	deadline := time.After(5 * time.Second)
+	for history.SharedCatalog() == nil {
+		select {
+		case <-deadline:
+			t.Fatal("history catalog did not open")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	if err := history.SharedCatalog().ReconcileRoot(t.Context(), root); err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{"zulumarker", "quebecmarker"} {
+		page := app.SearchHistoryContent(HistorySearchRequest{Query: query, Scope: "global", Limit: 50})
+		if page.ReadError != nil || len(page.Items) != 1 || page.Items[0].Kind != "tool_output" {
+			t.Fatalf("query %q: want exactly one tool_output hit, got %+v", query, page)
+		}
+	}
+}
+
+func TestHistorySearchBuildReadsEachSessionOnceAndKeepsRankOrder(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	dir := config.SessionDir()
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	digests := map[string]string{}
+	paths := []string{filepath.Join(dir, "a.jsonl"), filepath.Join(dir, "b.jsonl")}
+	for _, path := range paths {
+		source := agent.NewSession("")
+		source.Add(provider.Message{Role: provider.RoleUser, Content: "first interleave"})
+		source.Add(provider.Message{Role: provider.RoleUser, Content: "second interleave"})
+		if err := source.SaveSnapshot(path); err != nil {
+			t.Fatal(err)
+		}
+		_, state, _, err := agent.LoadSessionDisplayMessages(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		digests[path] = state.DigestHex
+	}
+	loads := 0
+	original := loadHistorySearchMessages
+	loadHistorySearchMessages = func(path string) ([]provider.Message, agent.PersistedState, bool, error) {
+		loads++
+		return original(path)
+	}
+	t.Cleanup(func() { loadHistorySearchMessages = original })
+	app := NewApp()
+	app.ctx = t.Context()
+	t.Cleanup(app.closeSessionServices)
+	store := &app.desktopSessions.readSnapshots
+	candidates, out := &readSnapshot{}, &readSnapshot{}
+	t.Cleanup(func() { store.dispose(candidates); store.dispose(out) })
+	ranked := []historycatalog.Candidate{
+		{SessionPath: paths[0], MessageIndex: 0, Kind: "user_text"},
+		{SessionPath: paths[1], MessageIndex: 1, Kind: "user_text"},
+		{SessionPath: paths[0], MessageIndex: 1, Kind: "user_text"},
+		{SessionPath: paths[1], MessageIndex: 0, Kind: "user_text"},
+	}
+	for _, row := range ranked {
+		row.ContentDigest = digests[row.SessionPath]
+		if err := store.append(t.Context(), candidates, row); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fence, err := app.newReadSourceFence(store, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	build := &historySearchSnapshotBuild{ctx: t.Context(), app: app, store: store, snapshot: out, request: HistorySearchRequest{Query: "interleave"}, fence: fence, terms: []string{"interleave"}, cutoff: time.Now()}
+	if err := build.run(candidates); err != nil {
+		t.Fatal(err)
+	}
+	var got []HistorySearchHit
+	if err := out.walk(t.Context(), func(b []byte) error {
+		var hit HistorySearchHit
+		if err := json.Unmarshal(b, &hit); err != nil {
+			return err
+		}
+		got = append(got, hit)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if loads != len(paths) {
+		t.Fatalf("session loads = %d, want %d (one per session)", loads, len(paths))
+	}
+	if len(got) != len(ranked) {
+		t.Fatalf("hits = %+v", got)
+	}
+	for i, hit := range got {
+		if hit.SessionPath != ranked[i].SessionPath || hit.MessageIndex != ranked[i].MessageIndex || hit.Snippet == "" {
+			t.Fatalf("hit %d = %+v, want rank order %+v", i, hit, ranked[i])
+		}
+	}
+}

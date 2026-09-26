@@ -69,8 +69,8 @@ func documents(messages []provider.Message) []indexedDocument {
 				appendDoc(i, part, string(msg.Role), "tool_input", call.Name, truncateToolText(call.Name+" "+call.Arguments))
 			}
 		case provider.RoleTool:
-			// Index both tool_error and tool_output so explicit kind filters stay
-			// honest. Default search kinds still exclude tool_output.
+			// Every tool result is a tool_output document; errors are also
+			// tool_error so a caller can ask for failures alone.
 			text := truncateToolText(msg.Name + " " + msg.Content)
 			lower := strings.ToLower(strings.TrimSpace(msg.Content))
 			if strings.HasPrefix(lower, "error:") || strings.HasPrefix(lower, "blocked:") || strings.Contains(lower, "permission denied") {
