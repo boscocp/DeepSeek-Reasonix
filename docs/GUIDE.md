@@ -314,7 +314,10 @@ SSH connection — VS Code Remote-SSH style. It bootstraps a persistent headless
 `reasonix serve` on the remote host, forwards a local loopback port to it, and
 opens the existing serve web client through that tunnel. The agent, its tools,
 and its files all live on the remote host at full fidelity; nothing runs through
-a lossy file proxy. V1 supports Linux and macOS remote hosts.
+a lossy file proxy.
+
+Linux, macOS and Windows remote hosts are supported. A Windows host needs PowerShell and OpenSSH, whichever login shell (cmd,
+PowerShell or Git Bash) its `DefaultShell` names.
 
 Hosts live in a user-global `[remote]` section of `config.toml`. Like
 `[secrets]`, a project `reasonix.toml` cannot inject or override remote hosts —
