@@ -138,7 +138,8 @@ type App struct {
 	catalogLifecycleMu                       sync.Mutex
 	catalogCancel                            context.CancelFunc
 	catalogDone, catalogInitialReconcileDone chan struct{}
-	catalogMetadataRequests                  chan struct{} // guarded by catalogLifecycleMu
+	catalogMetadataRequests                  chan struct{}        // guarded by catalogLifecycleMu
+	catalogClosing                           *sessionCatalogClose // guarded by catalogLifecycleMu
 	catalogRebuildMu                         sync.Mutex
 	catalogRebuild                           *sessionCatalogRebuildFlight
 	catalogRebuilding                        atomic.Bool
