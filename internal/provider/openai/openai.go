@@ -697,6 +697,8 @@ func sendChunk(ctx context.Context, out chan<- provider.Chunk, chunk provider.Ch
 }
 
 func (c *client) buildRequest(req provider.Request) chatRequest {
+	openCodeGoRoute, officialOpenCodeGo := provider.OpenCodeGoRequestRoute("openai", c.baseURL, c.chatURL, "")
+	openCodeGoChat := officialOpenCodeGo && openCodeGoRoute == provider.OpenCodeGoRouteChat
 	// Repair tool-call pairing before sending: an interrupted/resumed history can
 	// carry an assistant tool_calls turn whose results never landed, which DeepSeek
 	// rejects with a 400 ("must be followed by tool messages …").
@@ -726,9 +728,8 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
 			Role:       string(m.Role),
 			ToolCallID: m.ToolCallID,
 		}
-		if m.Role == provider.RoleTool {
-			// Always send the tool message's name, even when empty: strict
-			// backends (MiMo) 400 a tool result without the key (#4711).
+		if m.Role == provider.RoleTool && !openCodeGoChat {
+			// Strict backends (MiMo) 400 a tool result without name (#4711).
 			name := m.Name
 			cm.Name = &name
 		}
@@ -1164,11 +1165,8 @@ type chatMessage struct {
 	ReasoningContent *string        `json:"reasoning_content,omitempty"`
 	ToolCalls        []chatToolCall `json:"tool_calls,omitempty"`
 	ToolCallID       string         `json:"tool_call_id,omitempty"`
-	// Name is the role=tool message's function name. A pointer so ordinary
-	// messages omit the key (byte-stable prefix), while tool messages always
-	// serialize it — even empty: strict OpenAI-compatible backends (MiMo, per
-	// its error table) reject a tool message whose `name` key is absent
-	// ("name is not set"), and OpenAI's spec requires the field on role=tool.
+	// Name is the role=tool message's function name. A pointer preserves an
+	// empty name for strict backends (MiMo); OpenCode Go Chat rejects the key.
 	Name *string `json:"name,omitempty"`
 }
 
