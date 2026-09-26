@@ -461,6 +461,40 @@ func TestMultiEditStepNotFound(t *testing.T) {
 	}
 }
 
+func TestMultiEditReportsEveryFailedStep(t *testing.T) {
+	f := filepath.Join(testenv.TempDir(t), "a.txt")
+	original := "alpha\nbeta\nreturn nil\nreturn nil\ngamma\n"
+	os.WriteFile(f, []byte(original), 0o644)
+	_, err := multiEdit{}.Execute(context.Background(), argsJSON(t, map[string]any{
+		"path": f,
+		"edits": []map[string]any{
+			{"old_string": "alpha", "new_string": "ALPHA"},
+			{"old_string": "nonexistent", "new_string": "x"},
+			{"old_string": "gamma", "new_string": "GAMMA"},
+			{"old_string": "return nil", "new_string": "return err"},
+			{"new_string": "x"},
+		},
+	}))
+	if err == nil {
+		t.Fatal("expected error for failed edit steps")
+	}
+	msg := err.Error()
+	for _, want := range []string{"3 of 5 edits failed", "edit 2: old_string not found", "edit 4: old_string is not unique", "edit 5: old_string is required"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("multi_edit error should mention %q, got:\n%s", want, msg)
+		}
+	}
+	for _, unwanted := range []string{"edit 1:", "edit 3:"} {
+		if strings.Contains(msg, unwanted) {
+			t.Errorf("multi_edit error should not report succeeding step %q, got:\n%s", unwanted, msg)
+		}
+	}
+	got, _ := os.ReadFile(f)
+	if string(got) != original {
+		t.Errorf("file modified despite error: %q", got)
+	}
+}
+
 func TestMultiEditReplaceAll(t *testing.T) {
 	f := filepath.Join(testenv.TempDir(t), "a.txt")
 	os.WriteFile(f, []byte("foo bar foo baz foo"), 0o644)
