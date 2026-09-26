@@ -1,5 +1,9 @@
 "use strict";
 const { app, BrowserWindow, dialog, ipcMain, screen, session, shell } = require("electron");
+const { relaunchForOzonePlatform } = require("./ozone");
+
+// Before the instance lock: this process must hold nothing its relaunch needs.
+if (relaunchForOzonePlatform(app, process)) return;
 const fs = require("node:fs/promises");
 const { existsSync } = require("node:fs");
 const path = require("node:path");
