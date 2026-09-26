@@ -25,7 +25,7 @@ import { beginTurnModelActivity, endTurnModelActivity, sampleTurnArguments } fro
 import { normalizeToolApprovalMode } from "./types";
 export { metaFromTab } from "./controllerTabMeta";
 import { invalidateCache } from "./composerHistory";
-import { formatInboxCancelError } from "./inboxError";
+import { formatInboxCancelError, isPermissionSessionChanged } from "./inboxError";
 import type { MessageActionScope, MessageActionState } from "./messageActions";
 import { mergeRateBand, type AggregatedRateBand } from "./costRateBand";
 import { requestSessionCancel, type CancelOutcome } from "./inboxCancel";
@@ -1803,12 +1803,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       } else if (e.outcome === "completion_uncertain") {
         items = [...finalized, { kind: "notice", id: `e${s.seq}`, level: "info", title: t("notice.completionUncertainTitle"), text: t("notice.completionUncertainBody") }];
       } else if (e.status === "interrupted" || e.status === "recovery_required") {
-        const interruptItems: Item[] = [{
-          kind: "notice",
-          id: `e${s.seq}`,
-          level: "info",
-          text: t("notice.cancelledTurnDisplay"),
-        }];
+        const interruptItems: Item[] = [{ kind: "notice", id: `e${s.seq}`, level: "info", text: t("notice.cancelledTurnDisplay") }];
         // A stop during a broken provider stream would otherwise look like an
         // unexplained silence; surface the last known failure reason (#9560).
         if (s.lastStreamInterrupt?.reason) {
@@ -1818,6 +1813,9 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
             level: "warn",
             text: t("notice.streamInterruptReason", { reason: streamInterruptReasonText(s.lastStreamInterrupt.reason) }),
           });
+        }
+        if (e.err && e.diagnostic && e.diagnostic.kind !== "cancelled" && !s.streamInterruptNoticeShown) {
+          interruptItems.push({ kind: "notice", id: `e${s.seq + interruptItems.length}`, level: "warn", text: e.err, detail: e.detail });
         }
         items = [...finalized, ...interruptItems];
       } else if (e.err && !s.streamInterruptNoticeShown) {
@@ -3911,8 +3909,12 @@ export function useController() {
 
   const setToolApprovalModeForTab = useCallback(async (tabId: string, mode: ToolApprovalMode): Promise<void> => {
     if (!tabId) return;
-	const current = await app.PermissionSnapshotForTab(tabId);
-	await app.SetPermissionPresetForTab(tabId, normalizeToolApprovalMode(mode), current.revision);
+    const current = await app.PermissionSnapshotForTab(tabId);
+    try {
+      await app.SetPermissionPresetForTab(tabId, current.sessionId, normalizeToolApprovalMode(mode), current.revision);
+    } catch (error) {
+      if (!isPermissionSessionChanged(error)) throw error;
+    }
     await refreshMetaForTab(tabId);
   }, [refreshMetaForTab]);
 

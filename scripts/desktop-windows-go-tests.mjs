@@ -8,14 +8,15 @@ export const historyTests = {
   "history-8-9": "TestTaggedHistory1388To1389",
   "history-10-11": "TestTaggedHistory13810To13811",
 };
-export const groups = ["A-B", "C", "D", "E-H", "I-P", "Q-S", "T-Z", ...Object.keys(historyTests)];
+export const groups = ["A-B", "C", "D", "E-H", "I-M", "N-P", "Q-S", "T-Z", ...Object.keys(historyTests)];
 export const conptyProbe = "TestWindowsTerminalProcessConPTYSmoke";
 export const filters = {
   "A-B": { skip: "^Test[C-Z]" },
   "C": { run: "^TestC" },
   "D": { run: "^TestD" },
   "E-H": { run: "^Test[E-H]" },
-  "I-P": { run: "^Test[I-P]" },
+  "I-M": { run: "^Test[I-M]" },
+  "N-P": { run: "^Test[N-P]" },
   "Q-S": { run: "^Test[Q-S]" },
   "T-Z": { run: "^Test[T-Z]", skip: `^(${[conptyProbe, ...Object.values(historyTests)].join("|")})$` },
   ...Object.fromEntries(Object.entries(historyTests).map(([group, name]) => [group, { run: `^${name}$` }])),

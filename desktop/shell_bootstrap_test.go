@@ -103,7 +103,7 @@ func TestBootstrapShellStartsDetachedShellWithServiceEnvAndArgs(t *testing.T) {
 	if err := os.WriteFile(shell, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	env := append(os.Environ(), "REASONIX_TEST_SHELL_OUT="+out, shellServiceEnv+"=stale")
+	env := append(os.Environ(), "REASONIX_TEST_SHELL_OUT="+out, shellServiceEnv+"=stale", ozonePlatformEnv+"=wayland")
 	handled, code := bootstrapShell(exe, runtime.GOOS, []string{"--flag", "two words"}, env)
 	if !handled || code != 0 {
 		t.Fatalf("bootstrap handled=%v code=%d", handled, code)

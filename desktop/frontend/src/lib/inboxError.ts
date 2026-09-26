@@ -134,6 +134,12 @@ export function isTurnNotRunning(error: unknown): boolean {
   return errorText(error) === `${CODE_PREFIX}turn_not_running`;
 }
 
+// The tab moved to another session between reading the permission snapshot and
+// applying the choice; the choice belongs to the session that was read.
+export function isPermissionSessionChanged(error: unknown): boolean {
+  return errorText(error) === `${CODE_PREFIX}permission_session_changed`;
+}
+
 export function formatInboxCancelError(error: unknown, locale: Locale): string {
   return ERROR_COPY[locale][CANCEL_FAILED_INDEX].replace("{error}", formatInboxError(error, locale));
 }

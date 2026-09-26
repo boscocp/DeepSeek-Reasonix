@@ -1,5 +1,5 @@
 import { app } from "../lib/bridge";
-import { displayedComposerProfileCollaborationMode, type ComposerProfile } from "../lib/composerProfile";
+import { composerProfileForOwner, composerProfileOwner, displayedComposerProfileCollaborationMode, type ComposerProfile } from "../lib/composerProfile";
 import type { TabMeta } from "../lib/types";
 import type { StructuredInvocationSubmit } from "../lib/invocationDisplay";
 import type { ControllerProfileResource } from "./controllerProfileOwner";
@@ -21,7 +21,7 @@ export function projectSubmissionResources(resources: readonly ControllerProfile
   messages: { starting: string; readOnly: string }): SubmissionResource[] {
   return resources.map(resource => {
     const tab = tabs.find(value => value.id === resource.target.tabId);
-    const profile = resource.target.tabId === active.tabId ? active.profile : profiles[resource.target.tabId];
+    const profile = resource.target.tabId === active.tabId ? active.profile : composerProfileForOwner(profiles[resource.target.tabId], composerProfileOwner(tab));
     const ready = Boolean(tab?.ready && (!tab.runtime || tab.runtime.phase === "ready") && !tab.startupErr)
       && (resource.target.tabId !== active.tabId || active.ready);
     return { target: resource.target, remote: resource.remote,

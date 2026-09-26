@@ -17536,6 +17536,9 @@
           "kind": "string"
         },
         {
+          "kind": "string"
+        },
+        {
           "kind": "integer"
         }
       ],
@@ -17547,6 +17550,7 @@
       "scope": {
         "inputs": [
           "tabID",
+          "expectedSessionID",
           "preset",
           "expectedRevision"
         ],

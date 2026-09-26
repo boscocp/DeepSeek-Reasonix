@@ -62,6 +62,7 @@ type turnEventState struct {
 	turnMessageIDs         map[string]bool
 	finalizedTurn          string
 	terminationBoundary    *terminationBoundary
+	openStream             openStreamOutput
 }
 
 // projectVolatileTodo keeps the same event-derived projection for controllers
@@ -133,6 +134,7 @@ func (s *turnEventSink) observe(e event.Event) {
 	if ledger := s.c.turnEventLedger(); ledger != nil {
 		ledger.ObserveRawEvent(e)
 	}
+	s.c.turnEvents.openStream.observe(e)
 	s.c.liveness.observe(e, time.Now())
 }
 

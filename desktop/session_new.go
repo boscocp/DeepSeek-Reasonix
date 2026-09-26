@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"reasonix/internal/config"
 	"reasonix/internal/control"
 )
 
@@ -54,6 +55,18 @@ func (a *App) NewSessionForTab(tabID string) error {
 			return err
 		}
 		a.persistTabSessionPath(tab, ctrl.SessionPath())
+		a.mu.RLock()
+		reused := tab.SessionID
+		a.mu.RUnlock()
+		if reused != "" {
+			// The blank session is handed out as new, so it keeps no earlier
+			// choice and no snapshot read before this point can make one.
+			a.sessionPresets.forget(reused)
+			a.adoptSessionPreset(tab, ctrl, reused)
+			if invalidator, ok := ctrl.(permissionSnapshotInvalidator); ok {
+				invalidator.InvalidatePermissionSnapshots()
+			}
+		}
 		releaseAdmission()
 		if err := a.ensureReusableBlankIdentity(tab); err != nil {
 			return err
@@ -102,6 +115,7 @@ func (a *App) syncTabSessionIdentity(tab *WorkspaceTab, ctrl control.SessionAPI)
 	if !bound {
 		return
 	}
+	rebound := false
 	a.mu.Lock()
 	if current := a.tabs[tab.ID]; current == tab {
 		if tab.SessionID == "" && tab.SessionPath != "" && identity.SessionService() != a.desktopSessionService("") {
@@ -115,6 +129,7 @@ func (a *App) syncTabSessionIdentity(tab *WorkspaceTab, ctrl control.SessionAPI)
 			if tab.sink != nil {
 				tab.sink.setSessionGeneration(tab.SessionGeneration)
 			}
+			rebound = true
 		}
 		tab.SessionID = ref.SessionID
 		tab.SessionHeadID = ""
@@ -122,7 +137,30 @@ func (a *App) syncTabSessionIdentity(tab *WorkspaceTab, ctrl control.SessionAPI)
 		a.bindSessionRuntimeKeyLocked(tab, tab.currentSessionIdentity())
 	}
 	a.mu.Unlock()
+	if rebound {
+		a.adoptSessionPreset(tab, ctrl, ref.SessionID)
+	}
 	a.saveTabsFromRemote()
+}
+
+type permissionSnapshotInvalidator interface {
+	InvalidatePermissionSnapshots()
+}
+
+// adoptSessionPreset gives a tab that now holds sessionID that session's own
+// recorded preset, or the new-session default; the preset the surface held for
+// its previous session never carries over.
+func (a *App) adoptSessionPreset(tab *WorkspaceTab, ctrl control.SessionAPI, sessionID string) {
+	preset := a.sessionPresets.restore(sessionID, newSessionPreset(config.LoadForEdit(config.UserConfigPath())))
+	a.mu.Lock()
+	if a.tabs[tab.ID] != tab || tab.SessionID != sessionID {
+		a.mu.Unlock()
+		return
+	}
+	tab.toolApprovalMode = preset
+	tab.mode = tabModeFromAxes(tabModeHasPlan(tab.mode), preset == control.ToolApprovalDangerFullAccess)
+	a.mu.Unlock()
+	applyTabToolApprovalModeToController(ctrl, preset)
 }
 
 func clearBlankSessionPinnedContext(tab *WorkspaceTab, ctrl control.SessionAPI) error {

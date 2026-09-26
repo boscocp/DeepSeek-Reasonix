@@ -39,5 +39,21 @@ for a temporary override that does not change the saved preference.
 若无法使用恢复弹窗，可完全退出 Reasonix 后带 `REASONIX_DISABLE_GPU=1` 启动，
 临时关闭加速，不改变已保存的偏好。
 
+## Linux display backend / Linux 显示后端
+
+Under a Wayland session that also provides XWayland (`DISPLAY` is set), Reasonix
+starts its window with `--ozone-platform=x11`, because some drivers fail to
+initialise EGL on Electron's Wayland backend and the app exits before a window
+appears. A pure Wayland session without `DISPLAY` keeps the native backend. Set
+`REASONIX_OZONE_PLATFORM=wayland` to use native Wayland anyway, `x11` to force
+X11, or `auto` for the default. An `--ozone-platform` argument given on the
+command line always wins.
+
+在同时提供 XWayland（设置了 `DISPLAY`）的 Wayland 会话下，Reasonix 默认以
+`--ozone-platform=x11` 启动窗口：部分驱动在 Electron 的 Wayland 后端上无法初始化
+EGL，应用会在窗口出现前退出。没有 `DISPLAY` 的纯 Wayland 会话保持原生后端。
+设置 `REASONIX_OZONE_PLATFORM=wayland` 可仍使用原生 Wayland，`x11` 强制 X11，
+`auto` 为默认行为。命令行显式传入的 `--ozone-platform` 始终优先。
+
 See the [shell implementation and validation notes](../desktop/electron/README.md#hardware-acceleration-recovery).
 实现及验证说明见上述链接。

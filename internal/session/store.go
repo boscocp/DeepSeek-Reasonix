@@ -550,6 +550,7 @@ func loadBoundedStartupSessionState(ctx context.Context, dir string, file *os.Fi
 		for _, event := range commit.Events {
 			if modelProjectionEvent(event.Kind) {
 				sawModelEvent = true
+				supersedeStreamCheckpoint(&state.projection, event.Kind)
 				if modelProjectionReset(event.Kind) {
 					modelOffset, modelSequence = offset, commit.FirstSequence
 				}
@@ -601,12 +602,14 @@ func loadBoundedStartupSessionState(ctx context.Context, dir string, file *os.Fi
 		// The first pass saw canonical results even before the latest context
 		// reset. Replaying only that reset's wire view cannot recover their state.
 		rejected := maps.Clone(state.projection.RejectedToolResults)
+		checkpoint := state.projection.StreamCheckpoint
 		if err := loadCurrentModelProjection(ctx, file, content, state, modelOffset, modelSequence); err != nil {
 			return nil, 0, false, err
 		}
 		state.projection.TranscriptInputs, state.projection.HiddenTurns = inputs, hidden
 		state.projection.RetractedInputs = retracted
 		state.projection.RejectedToolResults = rejected
+		state.projection.StreamCheckpoint = checkpoint
 	}
 	state.projection.Messages = nil
 	state.projection.CommittedSequence = state.durable

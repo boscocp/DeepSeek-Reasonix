@@ -254,11 +254,13 @@ func (a *App) openForkedSessionTabWithWorkspace(sourceTab *WorkspaceTab, locator
 	model := sourceTab.model
 	effort := cloneStringPtr(sourceTab.effort)
 	mode := currentTabMode(sourceTab)
-	toolApprovalMode := currentTabToolApprovalMode(sourceTab)
 	disabledMCP := cloneServerViewMap(sourceTab.disabledMCP)
 	mcpOrder := append([]string(nil), sourceTab.mcpOrder...)
 	sourceCtrl := sourceTab.Ctrl
 	a.mu.RUnlock()
+	// A fork is a new session: the source's preset was chosen for the source.
+	toolApprovalMode := a.sessionPresets.restore(locator.SessionID, newSessionPreset(config.LoadForEdit(config.UserConfigPath())))
+	mode = tabModeFromAxes(tabModeHasPlan(mode), toolApprovalMode == control.ToolApprovalDangerFullAccess)
 	if scope == "project" {
 		releaseAdmission, err := a.beginWorkspaceRuntimeAdmission(workspaceRoot)
 		if err != nil {

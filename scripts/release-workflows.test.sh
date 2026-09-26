@@ -43,6 +43,12 @@ assert "HAS_CERTUM: ${{ secrets.CERTUM_USERNAME != '' && secrets.CERTUM_OTP_URI 
 assert desktop.index('name: Validate signing mode') < desktop.index('name: Build and package')
 assert "inputs.orchestrated }}\" != \"true\"" in desktop
 assert 'manual-download only' in desktop
+# The public disclosure names the release it belongs to and normalizes the
+# v prefix, so it can never print a doubled version or a stale one.
+disclosure = desktop.split('name: Disclose manual Desktop distribution', 1)[1].split('- name:', 1)[0]
+assert 'version="v${MANUAL_VERSION#v}"' in disclosure
+assert 'This ${version} desktop release' in disclosure
+assert 'v${MANUAL_VERSION}' not in disclosure
 manual_exit = desktop.index('if [ "$DESKTOP_MANUAL_ONLY" = "true" ]; then', desktop.index('name: Mirror immutable assets'))
 assert manual_exit < desktop.index('validate_current_pointer()', manual_exit)
 assert 'pointer_moved=false' in desktop[manual_exit:manual_exit + 350]
@@ -100,7 +106,7 @@ grep -Fq 'required: false' <<<"$(sed -n '/^      rehearsal:/,$p' <<<"$candidate_
 ! grep -Fq 'pull_request_target' "$candidate"
 grep -Fq 'branches: [main-v2]' "$candidate"
 grep -Fq -- '- release-notes/releases.json' "$candidate"
-grep -Fq 'actions/attest-build-provenance@v3' "$candidate"
+grep -Eq 'actions/attest-build-provenance@[0-9a-f]{40} # v3$' "$candidate"
 grep -Fq 'bash scripts/validate-release-control-plane.sh' "$candidate"
 preflight_line="$(grep -n -m1 'bash scripts/validate-release-control-plane.sh' "$candidate" | cut -d: -f1)"
 source_ci_line="$(grep -n -m1 'run: bash scripts/verify-release-push-ci.sh' "$candidate" | cut -d: -f1)"

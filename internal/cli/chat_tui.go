@@ -61,6 +61,7 @@ type chatTUI struct {
 
 	width  int
 	height int
+	glyphs *glyphFit // console-measured stand-ins for runes drawn wider than counted
 	// themeSweep freezes the frame while a /theme switch wipes across it.
 	themeSweep *themeSweep
 	// nativeScrollback keeps Termux out of alt-screen mode so taps still focus
@@ -687,6 +688,7 @@ func newChatTUI(ctrl control.SessionAPI, missing string, eventCh chan event.Even
 		nativeScrollback:         nativeScrollback,
 		legacyScrollClear:        useLegacyViewportScrollClear(runtime.GOOS, os.Environ()),
 		mouseCaptureOff:          mouseCaptureOffByDefault(),
+		glyphs:                   newConsoleGlyphFit(os.Stdout),
 		input:                    ti,
 		spinner:                  sp,
 		submittedInputCursor:     -1,
@@ -801,6 +803,9 @@ func (m *chatTUI) recallSubmittedInput(delta int) bool {
 	if len(m.submittedInputs) == 0 {
 		return false
 	}
+	if m.submittedInputCursor >= 0 && m.input.Value() != m.submittedInputs[m.submittedInputCursor] {
+		m.resetSubmittedInputRecall() // an edited entry is the new draft
+	}
 	cursor := m.submittedInputCursor
 	if cursor < 0 {
 		if delta > 0 {
@@ -812,6 +817,12 @@ func (m *chatTUI) recallSubmittedInput(delta int) bool {
 		m.submittedInputDraft = m.input.Value()
 		cursor = len(m.submittedInputs) - 1
 	} else {
+		if delta < 0 && m.input.Line() != 0 {
+			return false // inside a multi-line entry the textarea moves the cursor
+		}
+		if delta > 0 && m.input.Line() != m.input.LineCount()-1 {
+			return false
+		}
 		cursor += delta
 	}
 
@@ -1532,7 +1543,6 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Don't reset queue navigation — the Enter handler below needs
 			// queueEditCursor to decide whether to save an edit or enqueue.
 		default:
-			m.resetSubmittedInputRecall()
 			// Preserve queue navigation while the user is editing a queued
 			// item — only reset when they're not browsing the queue, so that
 			// typing replacement text keeps queueEditCursor alive for the
@@ -3240,6 +3250,12 @@ func (m chatTUI) cancelRequested() bool {
 }
 
 func (m chatTUI) View() tea.View {
+	v := m.frame()
+	v.Content = m.glyphs.apply(v.Content)
+	return v
+}
+
+func (m chatTUI) frame() tea.View {
 	if m.themeSweep != nil {
 		v := tea.NewView(m.themeSweep.render())
 		if !m.nativeScrollback {

@@ -172,6 +172,7 @@ func (a *App) executeCanonicalPurge(ctx context.Context, ref session.SessionRef,
 	if err := a.sessionUIStore().PurgeComposer(ctx, composerRecordKey(ref)); err != nil {
 		return err
 	}
+	a.sessionPresets.forget(ref.SessionID)
 	if err := store.AdvancePurge(ctx, ref.SessionID, "content_removed"); err != nil {
 		return err
 	}
