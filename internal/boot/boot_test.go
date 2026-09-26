@@ -844,12 +844,13 @@ func setBootSubagentTestProvider(t *testing.T, p *bootSubagentTestProvider) {
 }
 
 type bootSubagentTestProvider struct {
-	mu             sync.Mutex
-	calls          int
-	continueRef    string
-	requests       []provider.Request
-	combinedVision bool
-	visionRequests []provider.Request
+	mu               sync.Mutex
+	calls            int
+	continueRef      string
+	hookSessionProbe bool
+	requests         []provider.Request
+	combinedVision   bool
+	visionRequests   []provider.Request
 }
 
 type bootImageInfoProvider struct {
@@ -886,6 +887,27 @@ func (p *bootSubagentTestProvider) Stream(_ context.Context, req provider.Reques
 	p.mu.Unlock()
 
 	var chunks []provider.Chunk
+	if p.hookSessionProbe {
+		switch call {
+		case 0:
+			chunks = []provider.Chunk{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "skill-first", Name: "run_skill", Arguments: `{"name":"hook-probe","arguments":"read marker.txt"}`}}}
+		case 1:
+			chunks = []provider.Chunk{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "child-read-first", Name: "read_file", Arguments: `{"path":"marker.txt"}`}}}
+		case 4:
+			args, _ := json.Marshal(map[string]string{"name": "hook-probe", "arguments": "read marker.txt again", "continue_from": ref})
+			chunks = []provider.Chunk{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "skill-resume", Name: "run_skill", Arguments: string(args)}}}
+		case 5:
+			chunks = []provider.Chunk{{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{ID: "child-read-resume", Name: "read_file", Arguments: `{"path":"marker.txt"}`}}}
+		default:
+			chunks = []provider.Chunk{{Type: provider.ChunkText, Text: "done"}, {Type: provider.ChunkDone}}
+		}
+		ch := make(chan provider.Chunk, len(chunks))
+		for _, chunk := range chunks {
+			ch <- chunk
+		}
+		close(ch)
+		return ch, nil
+	}
 	if combinedVision {
 		switch call {
 		case 0:
