@@ -38,6 +38,7 @@ func newSubagentConfig(opts Options, cfg *config.Config, entry *config.ProviderE
 			me := *entry
 			selectedRef := modelRefFromEntry(entry)
 			if strings.TrimSpace(modelRef) != "" {
+				modelRef = childModelRef(cfg, entry, modelRef)
 				if resolved, ok := cfg.ResolveModel(modelRef); ok {
 					me = *resolved
 					selectedRef = modelRefFromEntry(resolved)
@@ -86,6 +87,20 @@ func newSubagentConfig(opts Options, cfg *config.Config, entry *config.ProviderE
 		taskEffort:    firstNonEmpty(cfg.Agent.SubagentEfforts["task"], cfg.Agent.SubagentEffort),
 		maxDepth:      agent.NormalizeMaxSubagentDepth(cfg.Agent.MaxSubagentDepth),
 	}
+}
+
+// childModelRef qualifies a bare model name with the parent's provider when
+// that provider serves it. Config resolves a bare name to the first provider
+// listing it, which would move a child onto a provider the user never picked.
+func childModelRef(cfg *config.Config, parent *config.ProviderEntry, ref string) string {
+	ref = strings.TrimSpace(ref)
+	if cfg == nil || parent == nil || ref == "" || strings.Contains(ref, "/") || !parent.HasModel(ref) {
+		return ref
+	}
+	if _, isProvider := cfg.Provider(ref); isProvider {
+		return ref
+	}
+	return parent.Name + "/" + ref
 }
 
 // firstConfigured returns the first non-empty value among the keys a profile
