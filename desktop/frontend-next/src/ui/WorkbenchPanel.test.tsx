@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { EditorView } from "@codemirror/view";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MockPort } from "../port/mock";
+import { HttpError } from "../port/port";
 import { WorkbenchPanel } from "./WorkbenchPanel";
 
 afterEach(cleanup);
@@ -113,5 +114,51 @@ describe("WorkbenchPanel", () => {
     rerender(<WorkbenchPanel {...props} running={false} />);
 
     expect(await screen.findByRole("button", { name: "report.html" })).toBeTruthy();
+  });
+
+  it("shows the workspace and any entry in the system file manager through the port", async () => {
+    const user = userEvent.setup();
+    const port = new MockPort();
+    const reveal = vi.spyOn(port, "revealInFileManager");
+    render(<WorkbenchPanel port={port} tabs={[]} manual={false} shown scheme="light" changes={[]} onCloseManual={vi.fn()} onSurfaces={vi.fn()} onExternal={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "在系统文件管理器中显示工作区" }));
+    expect(reveal).toHaveBeenLastCalledWith("");
+
+    const folder = await screen.findByRole("button", { name: "internal" });
+    fireEvent.contextMenu(folder);
+    await user.click(screen.getByRole("menuitem", { name: "在系统文件管理器中显示" }));
+    expect(reveal).toHaveBeenLastCalledWith("internal");
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    // From the keyboard: the menu key reports no pointer, and the item takes focus.
+    fireEvent.contextMenu(screen.getByRole("button", { name: "README.md" }), { clientX: 0, clientY: 0 });
+    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "在系统文件管理器中显示" }));
+    await user.keyboard("{Enter}");
+    expect(reveal).toHaveBeenLastCalledWith("README.md");
+  });
+
+  it("offers no way to reveal a remote workspace's paths on this machine", async () => {
+    const port = new MockPort();
+    const reveal = vi.spyOn(port, "revealInFileManager");
+    render(<WorkbenchPanel port={port} tabs={[]} manual={false} shown scheme="light" changes={[]} remote onCloseManual={vi.fn()} onSurfaces={vi.fn()} onExternal={vi.fn()} />);
+    const row = await screen.findByRole("button", { name: "README.md" });
+
+    expect(screen.queryByRole("button", { name: "在系统文件管理器中显示工作区" })).toBeNull();
+    // Not prevented: the system menu is left to the shell.
+    expect(fireEvent.contextMenu(row)).toBe(true);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(reveal).not.toHaveBeenCalled();
+  });
+
+  it("says why a reveal was refused, in the explorer", async () => {
+    const user = userEvent.setup();
+    const port = new MockPort();
+    vi.spyOn(port, "revealInFileManager").mockRejectedValue(
+      new HttpError(403, "no window", { code: "workspace.locate_no_window", error: "no window" }),
+    );
+    render(<WorkbenchPanel port={port} tabs={[]} manual={false} shown scheme="light" changes={[]} onCloseManual={vi.fn()} onSurfaces={vi.fn()} onExternal={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "在系统文件管理器中显示工作区" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("这个内核不在本机，没法在系统文件管理器中显示它的文件。");
   });
 });
