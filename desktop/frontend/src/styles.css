@@ -28717,6 +28717,7 @@ body > .mermaid-diagram--fullscreen {
   top: 48px;
 }
 .toast {
+  --reasonix-draggable: no-drag;
   max-width: min(560px, calc(100vw - 32px));
   pointer-events: auto;
   cursor: pointer;

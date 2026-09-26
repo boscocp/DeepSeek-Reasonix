@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -23,9 +24,9 @@ import (
 	"reasonix/internal/sessioncontent"
 )
 
-// Version 7 retains rejected tool execution evidence in recovery checkpoints.
-// Older projections are disposable and rebuild from the unchanged durable log.
-const recoveryProjectionVersion = 7
+// Version 8 carries the live message ids the writer checks new completions
+// against. Older projections are disposable and rebuild from the unchanged log.
+const recoveryProjectionVersion = 8
 
 const (
 	recoveryFormatVersion = 1
@@ -91,6 +92,7 @@ type recoveryCheckpoint struct {
 	Projection        Projection         `json:"projection"`
 	RecentMessages    []provider.Message `json:"recentMessages,omitempty"`
 	CatalogPreview    string             `json:"catalogPreview,omitempty"`
+	MessageIDs        []string           `json:"messageIds,omitempty"`
 	CreatedAt         time.Time          `json:"createdAt"`
 }
 
@@ -584,6 +586,7 @@ func checkpointFromStartup(manifest Manifest, identity storageIdentity, state *s
 		checkpoint.AnchorHash = state.tip.AnchorHash
 		checkpoint.RecentMessages = detachMessages(state.recentMessages)
 		checkpoint.CatalogPreview = state.catalogPreview
+		checkpoint.MessageIDs = state.messageIDs.list()
 	}
 	return checkpoint
 }
@@ -636,17 +639,21 @@ func tryRecoveryCheckpoint(ctx context.Context, dir string, file *os.File, info 
 		projection: cloneProjection(checkpoint.Projection), operations: map[string]operationRecord{},
 		durable: checkpoint.DurableSequence, catalogPreview: checkpoint.CatalogPreview,
 		recentMessages: detachMessages(checkpoint.RecentMessages),
+		messageIDs:     identitiesOf(checkpoint.MessageIDs),
 		tip: durableTip{LogOffset: checkpoint.LogOffset, AnchorOffset: checkpoint.AnchorOffset,
 			AnchorFirst: checkpoint.AnchorFirst, AnchorCommitID: checkpoint.AnchorCommitID, AnchorHash: checkpoint.AnchorHash},
 	}
 	var projectionErr error
 	content := contentStoreForSessionDir(dir)
+	repeated := map[uint64]bool{}
 	err := scanV4CommitFile(ctx, file, checkpoint.LogOffset, checkpoint.DurableSequence+1, content, nil, func(offset int64, commit Commit) bool {
-		if err := applyProjectionCommit(&state.projection, commit); err != nil {
+		kept := commit
+		kept.Events = slices.DeleteFunc(slices.Clone(commit.Events), func(event Event) bool { return !state.messageIDs.admitEvent(event, repeated) })
+		if err := applyProjectionCommit(&state.projection, kept); err != nil {
 			projectionErr = err
 			return false
 		}
-		if err := applyRecentCommit(&state.recentMessages, commit); err != nil {
+		if err := applyRecentCommit(&state.recentMessages, kept); err != nil {
 			projectionErr = err
 			return false
 		}

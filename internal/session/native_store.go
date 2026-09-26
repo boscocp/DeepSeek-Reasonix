@@ -55,6 +55,7 @@ func loadStartupSessionStateForManifest(ctx context.Context, dir, eventsPath str
 			projectionErr = applyErr
 			return false
 		}
+		state.messageIDs.admit(commit)
 		return true
 	})
 	if err != nil || projectionErr != nil {

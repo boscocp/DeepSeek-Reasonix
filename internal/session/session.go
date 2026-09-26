@@ -44,6 +44,7 @@ type Session struct {
 	catalogPreview    string
 	recentMessages    []provider.Message
 	durableRecent     []provider.Message
+	messageIDs        messageIdentities
 	storageGeneration string
 	recovery          *recoveryStore
 	// coldHandle backs a read-only session, which has no binding because it
@@ -88,9 +89,14 @@ func newSession(id string, manifest Manifest, commits []Commit, projection Proje
 		operations[commit.OperationID] = compactOperationRecord(commit)
 		next = commit.LastSequence() + 1
 	}
+	ids := make([]string, 0, len(projection.Messages))
+	for _, message := range projection.Messages {
+		ids = append(ids, message.ID)
+	}
 	return &Session{
 		id: id, manifest: manifest, next: next,
 		operations: operations, projection: projection, binding: binding,
+		messageIDs: identitiesOf(ids),
 	}
 }
 
@@ -348,6 +354,11 @@ func (s *Session) commitPrepared(prepared PreparedBatch, expectedTitleSequence *
 	for i := range storedCommit.Events {
 		storedCommit.Events[i].Sequence = storedCommit.FirstSequence + uint64(i)
 	}
+	identities := s.messageIDs.changeFor(commit)
+	if identities.duplicate != "" {
+		s.mu.Unlock()
+		return Commit{}, duplicateMessageError(identities.duplicate)
+	}
 	projection := cloneProjection(s.projection)
 	if err := applyProjectionCommit(&projection, commit); err != nil {
 		s.mu.Unlock()
@@ -364,6 +375,7 @@ func (s *Session) commitPrepared(prepared PreparedBatch, expectedTitleSequence *
 	err := binding.accept(storedCommit, prepared.reservation, func() {
 		s.commits = append(s.commits, commit)
 		s.projection = projection
+		s.messageIDs.apply(identities)
 		_ = applyRecentCommit(&s.recentMessages, commit)
 		s.next = commit.LastSequence() + 1
 		s.operations[prepared.operationID] = compactOperationRecord(commit)

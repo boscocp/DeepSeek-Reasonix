@@ -1635,6 +1635,7 @@ export const en = {
   "projectTree.sessionError.staleCursor": "The session content changed. Reload it and try again.",
   "projectTree.sessionError.unsupported": "This session does not support that action yet.",
   "projectTree.sessionError.failed": "Unable to complete this session operation. Try again.",
+  "projectTree.sessionError.damaged": "This session's saved file is damaged and cannot be read. You can still move it to the Trash.",
   "projectTree.newGroup": "New group",
   "projectTree.renameGroup": "Rename group",
   "projectTree.deleteGroup": "Delete group",

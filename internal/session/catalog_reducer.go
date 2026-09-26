@@ -1,9 +1,6 @@
 package session
 
-import (
-	"fmt"
-	"strings"
-)
+import "strings"
 
 // Retain only stable IDs and short authored previews. Upserts can erase the
 // first preview, and history replacement can reorder it, so keeping only the
@@ -17,6 +14,10 @@ type catalogReducer struct {
 
 func (r *catalogReducer) apply(commit Commit) error {
 	for _, ev := range commit.Events {
+		if ev.Kind == "message/complete" && r.positions[eventMessageID(ev)] {
+			r.state.CommittedSequence = ev.Sequence
+			continue
+		}
 		one := commit
 		one.Events = []Event{ev}
 		// Reuse the canonical payload validators and turn/config semantics.
@@ -39,10 +40,6 @@ func (r *catalogReducer) apply(commit Commit) error {
 			}
 		}
 		for _, message := range r.state.Messages {
-			exists := r.positions[message.ID]
-			if ev.Kind == "message/complete" && exists {
-				return damagedPayload(ev, fmt.Errorf("duplicate stable message id %q", message.ID))
-			}
 			r.positions[strings.Clone(message.ID)] = true
 		}
 		for _, turn := range r.state.Turns {

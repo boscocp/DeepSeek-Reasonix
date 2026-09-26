@@ -62,7 +62,7 @@ func TestCatalogReducerMatchesCanonicalProjection(t *testing.T) {
 	}
 }
 
-func TestCatalogReducerRejectsDuplicateCompleteAndMalformedPayload(t *testing.T) {
+func TestCatalogReducerKeepsFirstCompleteAndRejectsMalformedPayload(t *testing.T) {
 	for _, kind := range []string{"message/complete", "session/config", "turn/end", "tool/result"} {
 		r := catalogReducer{}
 		if err := r.apply(Commit{Events: []Event{{Kind: kind, Payload: json.RawMessage(`{}`)}}}); err == nil {
@@ -70,12 +70,15 @@ func TestCatalogReducerRejectsDuplicateCompleteAndMalformedPayload(t *testing.T)
 		}
 	}
 	r := catalogReducer{}
-	commit := Commit{Events: []Event{{Kind: "message/complete", Payload: json.RawMessage(`{"message":{"id":"same","role":"user","content":"hello"}}`)}}}
-	if err := r.apply(commit); err != nil {
-		t.Fatal(err)
+	first := Commit{Events: []Event{{Kind: "message/complete", Payload: json.RawMessage(`{"message":{"id":"same","role":"user","content":"hello"}}`)}}}
+	repeat := Commit{Events: []Event{{Kind: "message/complete", Payload: json.RawMessage(`{"message":{"id":"same","role":"user","content":"repeat"}}`)}}}
+	for _, commit := range []Commit{first, repeat} {
+		if err := r.apply(commit); err != nil {
+			t.Fatalf("duplicate complete across commits: %v", err)
+		}
 	}
-	if err := r.apply(commit); err == nil {
-		t.Fatal("accepted duplicate complete across commits")
+	if got := r.metadata(Manifest{}).Preview; got != "hello" {
+		t.Fatalf("preview = %q, want the first occurrence", got)
 	}
 }
 

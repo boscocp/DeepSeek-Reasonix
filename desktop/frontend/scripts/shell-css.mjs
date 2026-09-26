@@ -5,7 +5,7 @@
 const DRAG_VALUE = /--reasonix-draggable(\s*:\s*)(drag|no-drag)/g;
 const APP_REGION_DECL = /\s*-webkit-app-region\s*:\s*(?:no-)?drag;?/g;
 const CHROME_NO_DRAG_SELECTOR =
-  /(^|[,{\s])\.(?:topicbar(?:__|--)[\w-]*|topbar(?:__|--)[\w-]*|topicbar|topbar|sidebar[\w-]*|windows-window-control[\w-]*|management-screen[\w-]*|heartbeat[\w-]*|app-chrome[\w-]*|tabbar[\w-]*|chip|modal-close-button|[\w-]*backdrop|theme-gallery__editor-overlay)\b/i;
+  /(^|[,{\s])\.(?:topicbar(?:__|--)[\w-]*|topbar(?:__|--)[\w-]*|topicbar|topbar|sidebar[\w-]*|windows-window-control[\w-]*|management-screen[\w-]*|heartbeat[\w-]*|app-chrome[\w-]*|tabbar[\w-]*|chip|modal-close-button|[\w-]*backdrop|theme-gallery__editor-overlay|toast)\b/i;
 const CONTENT_APP_REGION_SELECTOR =
   /(^|[,{\s])\.(?:msg|transcript|reasoning|tool|process-card|composer|compaction|turn-collapse)(?:__|-|[\s,{.#:]|$)/i;
 
