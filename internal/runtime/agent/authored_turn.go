@@ -60,6 +60,9 @@ func (a *Agent) LandAuthoredUserMessage(ctx context.Context, msg provider.Messag
 	if a == nil || a.sess.conversation == nil {
 		return
 	}
+	if a.svc.admissionSaver != nil {
+		defer a.svc.admissionSaver.SaveAdmittedMessage(ctx)
+	}
 	boundary, hosted := HostTurnBoundaryFrom(ctx)
 	if !hosted {
 		a.sess.conversation.Add(msg)
