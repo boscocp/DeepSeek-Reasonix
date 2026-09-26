@@ -126,6 +126,7 @@ var English = Messages{
 	NotifyAsk:                       "The model asked you something",
 	ApprovalNeededFmt:               "approval needed: %s",
 	ApprovalNeededWithSubjectFmt:    "approval needed: %s %s",
+	AnswerNeededFmt:                 "answer needed: %s",
 	ToolApprovalSourceFmt:           "Source: %s",
 	ToolApprovalBuiltIn:             "built-in tool",
 	ToolApprovalImageUse:            "It will read provided image input for image understanding.",
