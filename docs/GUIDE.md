@@ -1451,20 +1451,25 @@ the strict read-only entrances:
 | `reasonix review` (CLI) | Read-only review of a diff or branch |
 | Desktop preview/review subagents | Read-only desktop analysis surfaces |
 
-`reasonix review` fires only the hooks you configured under the Reasonix home:
-the global `settings.json` and installed plugins.
+`reasonix review` treats the checkout it reviews as untrusted input and runs
+only your own configuration:
 
-It never runs project hooks from the checkout being reviewed
-(`<root>/.reasonix/settings.json`). A branch under review is untrusted input, and
-a hook it declares would otherwise run with your environment and keys.
+- The review skill is the built-in one, or one in your Reasonix home or
+  home-directory skill folders. No project skill directory is read, so a
+  `<root>/.reasonix/skills/review` never replaces it.
+- Tools and their sandbox, including `[tools.search]` `engine` and `rg_path`,
+  come from `<Reasonix home>/config.toml`, never from the checkout's
+  `reasonix.toml`.
+- Hooks are only the ones you configured under the Reasonix home: the global
+  `settings.json` and installed plugins. Project hooks from the checkout
+  (`<root>/.reasonix/settings.json`) never run, and the interpreter those hooks
+  use comes from your own `[tools.shell]`.
+- Review hooks start in the checkout root so they can inspect it, but a bare
+  command such as `python` never resolves to an executable the checkout ships:
+  the hook process runs with `NoDefaultCurrentDirectoryInExePath=1`, which stops
+  `cmd.exe` on Windows from searching the current directory first.
 
-The interpreter those hooks run under comes from your own `[tools.shell]`
-in the user config; the checkout's `reasonix.toml` cannot choose it.
-
-Review hooks start in the checkout root, so they can inspect it, but a bare
-command such as `python` never resolves to an executable the checkout ships:
-the hook process runs with `NoDefaultCurrentDirectoryInExePath=1`, which stops
-`cmd.exe` on Windows from searching the current directory first.
+The model and provider still resolve from the merged config, as in a session.
 
 In persisted sessions, `parallel_tasks` and `fleet` return a bounded preview
 plus one `Subagent reference` per completed child instead of concatenating every

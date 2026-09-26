@@ -71,9 +71,15 @@ func reviewCommand(args []string) int {
 		return 1
 	}
 
-	// 4. Get the built-in review skill.
+	// 4. The checkout under review is untrusted: what runs — the review skill,
+	// the tools and their binaries — comes from the user's scope only.
 	root, _ := os.Getwd()
-	skillStore := skill.New(skill.Options{ProjectRoot: root, Stderr: os.Stderr})
+	userCfg, err := cfg.Roots().LoadUserConfigReadOnly()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error: failed to load user config:", err)
+		return 1
+	}
+	skillStore := skill.New(skill.Options{Stderr: os.Stderr})
 	reviewSk, ok := skillStore.Read("review")
 	if !ok {
 		fmt.Fprintln(os.Stderr, "error: built-in review skill not found")
@@ -85,7 +91,7 @@ func reviewCommand(args []string) int {
 	}
 
 	// 5. Build a review-scoped sub-agent registry.
-	reg := buildReviewSubagentRegistry(reviewSk, cfg, root)
+	reg := buildReviewSubagentRegistry(reviewSk, userCfg, root)
 
 	// 6. Prepare the review prompt.
 	task := buildReviewTask(diff, *instructions)
@@ -116,6 +122,8 @@ func reviewCommand(args []string) int {
 	return 0
 }
 
+// buildReviewSubagentRegistry takes the user-only config: the search binary and
+// the sandbox are settings a reviewed checkout must not choose.
 func buildReviewSubagentRegistry(reviewSk skill.Skill, cfg *config.Config, root string) *tool.Registry {
 	// The shared helper strips subagent-unavailable background capabilities while
 	// preserving foreground bash. This direct CLI path does not go through boot,
