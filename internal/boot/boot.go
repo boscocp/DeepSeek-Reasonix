@@ -1428,6 +1428,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			}
 		}
 		task, runOptions := reviewSubagentSkillOptions(sctx, sk.Name, task, steps, price, ctxWin, childDepth, subagentSkillOptions)
+		if run.Ref != "" {
+			// A resumed skill has a new call ID but keeps the same transcript.
+			runOptions.Hooks = hookRunner.ForSession("subagent:" + run.Ref)
+		}
 		runOptions.WriteRoots = childWriteRoots
 		usageModelRef, _ := subagentIdentity(modelRef, effortRef)
 		runOptions.ModelRef = usageModelRef
