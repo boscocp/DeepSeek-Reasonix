@@ -102,6 +102,7 @@ const SAID: Record<string, string> = {
   "editor.not_installed": "这台机器上没找到 VS Code、Cursor 这类编辑器。装一个，或在配置里用 [desktop] editor 指定路径。",
   "editor.launch_failed": "编辑器没能启动：{error}",
   "editor.no_window": "这个内核没有窗口，打不开本机的编辑器。",
+  "workspace.locate_no_window": "这个内核不在本机，没法在系统文件管理器中显示它的文件。",
   "device.host_only": "这项操作只能在电脑上的窗口里做，已配对的手机做不了。",
   "device.host_rejected": "这个地址不是本机共享的地址，请重新扫码。",
   "device.origin_rejected": "请求来自其他网页，已拒绝。",

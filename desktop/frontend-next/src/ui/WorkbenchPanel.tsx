@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { t } from "../i18n";
 import { reason } from "../i18n/kernel";
 import { host } from "../port/host";
@@ -15,6 +16,7 @@ import { LazyMarkdown } from "./LazyMarkdown";
 import type { LocalRefs } from "./Markdown";
 import { docRef } from "./docrefs";
 import { useGlance } from "./glance";
+import { pinToViewport } from "./place";
 
 // The editor and its grammars load with the first file opened, not with Studio.
 const CodeEditor = lazy(() => import("./CodeEditor"));
@@ -105,6 +107,7 @@ export function WorkbenchPanel({
   scheme,
   changes,
   running = false,
+  remote = false,
   onCloseManual,
   onSurfaces,
   onExternal,
@@ -118,6 +121,8 @@ export function WorkbenchPanel({
   /** Whether a turn is in flight: one that settles can have written files git
    *  does not list, so the change set alone does not say the tree moved. */
   running?: boolean;
+  /** The workspace is on another machine, so its paths mean nothing here. */
+  remote?: boolean;
   onCloseManual: () => void;
   // How many surfaces the strip holds, for the pane's own tab to count.
   onSurfaces: (n: number) => void;
@@ -157,6 +162,40 @@ export function WorkbenchPanel({
       .then(({ editor }) => setEditorNote(t("已在 {app} 中打开", { app: editor })))
       .catch((e) => setEditorNote(reason(e)));
   }, [port]);
+  // Showing a file where it lives needs a shell on the kernel's own machine.
+  const revealable = !remote && port.revealsFiles();
+  const [platform, setPlatform] = useState("");
+  useEffect(() => void host().describe().then((h) => setPlatform(h.platform)), []);
+  const [menu, setMenu] = useState<{ path: string; x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    // Enter and Space are the focused item being chosen, not the menu dismissed.
+    const shut = (e: Event) => {
+      if (e instanceof KeyboardEvent && (e.key === "Enter" || e.key === " ")) return;
+      setMenu(null);
+    };
+    addEventListener("click", shut);
+    addEventListener("keydown", shut);
+    addEventListener("blur", shut);
+    return () => {
+      removeEventListener("click", shut);
+      removeEventListener("keydown", shut);
+      removeEventListener("blur", shut);
+    };
+  }, [menu]);
+  const reveal = (path: string) => {
+    setMenu(null);
+    port.revealInFileManager(path).then(() => setListFailed(""), (e) => setListFailed(reason(e)));
+  };
+  // The system menu stays wherever there is text to copy: this one is a shortcut.
+  const offerReveal = (e: MouseEvent<HTMLElement>, path: string) => {
+    if (!revealable || document.getSelection()?.isCollapsed === false) return;
+    e.preventDefault();
+    // The context-menu key reports no pointer, so the row itself is the anchor.
+    const row = e.currentTarget.getBoundingClientRect();
+    const keyed = e.clientX === 0 && e.clientY === 0;
+    setMenu({ path, x: keyed ? row.left + 24 : e.clientX, y: keyed ? row.bottom : e.clientY });
+  };
   const changeKey = changes
     .map((change) => `${change.status}:${change.path}`)
     .join("\n");
@@ -594,6 +633,17 @@ export function WorkbenchPanel({
             >
               <StudioIcon name="code" />
             </button>
+            {revealable && (
+              <button
+                className="workbench-open-editor"
+                data-action="workbench.reveal"
+                title={t("在系统文件管理器中显示工作区")}
+                aria-label={t("在系统文件管理器中显示工作区")}
+                onClick={() => reveal("")}
+              >
+                <StudioIcon name="reveal" />
+              </button>
+            )}
           </div>
           <label className="workbench-search">
             <StudioIcon name="search" />
@@ -652,12 +702,14 @@ export function WorkbenchPanel({
               row.kind === "folder" ? (
                 <button
                   className="workbench-tree-row"
-                  data-action="workbench.folder"
+                  data-action-click="workbench.folder"
                   data-target={row.path}
                   key={`d:${row.path}`}
                   style={{ paddingInlineStart: 8 + row.depth * 14 }}
                   aria-expanded={!collapsed.has(row.path)}
                   onClick={() => void toggleFolder(row.path)}
+                  data-action-contextmenu="workbench.menu"
+                  onContextMenu={(e) => offerReveal(e, row.path)}
                 >
                   <StudioIcon
                     name={collapsed.has(row.path) ? "chevron" : "down"}
@@ -668,7 +720,7 @@ export function WorkbenchPanel({
               ) : (
                 <button
                   className="workbench-tree-row"
-                  data-action="workbench.file"
+                  data-action-click="workbench.file"
                   data-target={row.path}
                   key={row.path}
                   style={{ paddingInlineStart: 8 + row.depth * 14 }}
@@ -679,6 +731,8 @@ export function WorkbenchPanel({
                       : undefined
                   }
                   onClick={() => openFile(row.path)}
+                  data-action-contextmenu="workbench.menu"
+                  onContextMenu={(e) => offerReveal(e, row.path)}
                 >
                   <span />
                   <StudioIcon name="file" />
@@ -696,6 +750,21 @@ export function WorkbenchPanel({
               <p className="workbench-no-files">{t("没有匹配的文件")}</p>
             )}
           </div>
+          {menu && createPortal(
+            <div
+              className="tabmenu"
+              role="menu"
+              ref={(el) => {
+                if (el) pinToViewport(el, menu.x, menu.y);
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button role="menuitem" autoFocus data-action="workbench.reveal" data-target={menu.path} onClick={() => reveal(menu.path)}>
+                {platform === "darwin" ? t("在访达中显示") : platform === "windows" ? t("在文件资源管理器中显示") : t("在系统文件管理器中显示")}
+              </button>
+            </div>,
+            document.body,
+          )}
         </aside>
       </div>
     </section>

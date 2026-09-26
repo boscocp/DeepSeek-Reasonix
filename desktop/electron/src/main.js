@@ -13,6 +13,7 @@ const { installTray } = require("./tray");
 const { instanceID, profileFor } = require("./instance");
 const { installApplicationMenu, installContextMenu } = require("./menu");
 const { externalTarget } = require("./links");
+const { reveal } = require("./reveal");
 const { appIcon } = require("./appicon");
 const layout = require("./layout");
 const { offerCleanup } = require("./legacy");
@@ -275,6 +276,9 @@ ipcMain.handle("shell:open-external", (event, raw) => {
   const target = externalTarget(raw);
   if (target) void shell.openExternal(target);
 });
+ipcMain.handle("shell:reveal", (event, base, rel) =>
+  fromWindow(event) && client ? reveal(client, shell, String(base), String(rel)) : { code: "", error: "no window" },
+);
 
 // A dismissed dialog answers with "", which is what the page reads as "they
 // said no". Only a failure to write is an error.
