@@ -61,14 +61,11 @@ type Session struct {
 	haveReviewUsage bool
 }
 
-// NewSession creates a guardian review session with a dedicated model, read-only
-// tool registry, and the guardian safety policy as its system prompt. The session
-// lives for the lifetime of the parent controller session; Close it to release
-// resources. sink receives GuardianAssessment events (nil = discard).
-// modelRef is kept in the signature for existing callers; session invalidation
-// is policy-prompt based.
-// temperature controls sampling (0 = deterministic).
-func NewSession(prov provider.Provider, readOnlyReg *tool.Registry, policyPrompt, modelRef string, temperature float64, pricing *provider.Pricing, sink event.Sink) *Session {
+// NewSession creates a guardian review session: a dedicated model, a read-only
+// registry whose calls fire hooks (nil for none), and the safety policy as its
+// system prompt. It lives as long as the parent controller session. sink
+// receives GuardianAssessment events (nil = discard); temperature 0 is deterministic.
+func NewSession(prov provider.Provider, readOnlyReg *tool.Registry, hooks agent.ToolHooks, policyPrompt, modelRef string, temperature float64, pricing *provider.Pricing, sink event.Sink) *Session {
 	if nilutil.IsNil(sink) {
 		sink = event.Discard
 	}
@@ -85,6 +82,7 @@ func NewSession(prov provider.Provider, readOnlyReg *tool.Registry, policyPrompt
 		MaxSteps:            6, // guardian reviews: enough for a few read-only tool calls
 		Temperature:         temperature,
 		RequireVisibleFinal: true, // each review must produce its own parseable verdict
+		Hooks:               hooks,
 		// Use the shared context window so the guardian session can compact
 		// itself when it grows too large across many reviews.
 		ContextWindow:          100_000,

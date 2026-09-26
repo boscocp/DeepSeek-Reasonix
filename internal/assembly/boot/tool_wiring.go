@@ -2,6 +2,8 @@ package boot
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"strings"
 
 	"reasonix/internal/contract/ablation"
@@ -31,13 +33,34 @@ func loadHooks(opts Options, roots config.Roots, root string, shell sandbox.Shel
 	} else {
 		resolved = hook.Load(hook.LoadOptions{ProjectRoot: root, ReasonixHomeDir: roots.Home()})
 	}
-	runtime := hook.RuntimeOptions{}
+	return resolved, hook.NewRunner(resolved, root, hook.NewDefaultSpawner(hookRuntime(shell)), func(n hook.Notice) { sink.Emit(hookNoticeEvent(n)) })
+}
+
+// NewUserHookRunner resolves only the hooks the user configured under the
+// Reasonix home, for a command that drives an agent over a checkout it must not
+// take commands from. Hook notices go to warn.
+func NewUserHookRunner(cfg *config.Config, root string, warn io.Writer) *hook.Runner {
+	return newUserHookRunner(cfg, root, warn, sandbox.ResolveShell, hook.NewDefaultSpawner)
+}
+
+// newUserHookRunner resolves the hook interpreter from the user config alone:
+// resolving it probes the configured path, so a checkout's [tools.shell] would
+// otherwise execute on the reviewer's machine before any hook matched. Hooks
+// start in the checkout but never resolve a bare command name from it.
+func newUserHookRunner(cfg *config.Config, root string, warn io.Writer, resolve func(prefer, path string, warn io.Writer) sandbox.Shell, spawn func(hook.RuntimeOptions) hook.Spawner) *hook.Runner {
+	user := cfg.Roots().UserShell()
+	shell := resolve(user.Prefer, user.Path, warn)
+	resolved := hook.Load(hook.LoadOptions{ProjectRoot: root, ReasonixHomeDir: cfg.Roots().Home(), Scopes: hook.UserScopes})
+	return hook.NewRunner(resolved, root, hook.WithoutCwdExeSearch(spawn(hookRuntime(shell))), func(n hook.Notice) {
+		_, _ = fmt.Fprintln(warn, strings.TrimSpace(n.Text+"\n"+n.Detail))
+	})
+}
+
+func hookRuntime(shell sandbox.Shell) hook.RuntimeOptions {
 	if shell.Kind == sandbox.ShellBash {
-		runtime.BashPath = shell.Path
+		return hook.RuntimeOptions{BashPath: shell.Path}
 	}
-	runner := hook.NewRunner(resolved, root, hook.NewDefaultSpawner(runtime),
-		func(n hook.Notice) { sink.Emit(hookNoticeEvent(n)) })
-	return resolved, runner
+	return hook.RuntimeOptions{}
 }
 
 // registerSessionTools adds the product-docs, session and memory tools every

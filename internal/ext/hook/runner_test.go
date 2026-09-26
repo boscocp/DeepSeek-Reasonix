@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -621,5 +622,46 @@ func TestDescribeOutcomeFallsBackToTheEvent(t *testing.T) {
 	}
 	if contains(n.Text, string(DecisionBlock)) {
 		t.Fatalf("headline = %q, want words rather than the decision enum", n.Text)
+	}
+}
+
+func TestRunnerForRoleDerivesSessionIDAtFireTime(t *testing.T) {
+	hooks := []ResolvedHook{{HookConfig: HookConfig{Command: "log", Match: "read_file"}, Event: PreToolUse}}
+	var got []Payload
+	spawner := func(_ context.Context, in SpawnInput) SpawnResult {
+		var p Payload
+		if err := json.Unmarshal([]byte(in.Stdin), &p); err != nil {
+			t.Fatalf("payload json: %v", err)
+		}
+		got = append(got, p)
+		return SpawnResult{ExitCode: 0}
+	}
+	parent := NewRunner(hooks, "/tmp", spawner, nil)
+	child := parent.ForRole("planner")
+	grandchild := child.ForRole("subagent:call-1")
+	child.PreToolUse(context.Background(), "read_file", json.RawMessage(`{}`))
+	parent.SetSessionID("parent")
+	child.PreToolUse(context.Background(), "read_file", json.RawMessage(`{}`))
+	parent.SetSessionID("rotated")
+	child.SetSessionID("ignored")
+	child.PreToolUse(context.Background(), "read_file", json.RawMessage(`{}`))
+	grandchild.PreToolUse(context.Background(), "read_file", json.RawMessage(`{}`))
+	parent.PreToolUse(context.Background(), "read_file", json.RawMessage(`{}`))
+	var ids []string
+	for _, p := range got {
+		ids = append(ids, p.SessionID)
+	}
+	want := []string{"planner", "parent:planner", "rotated:planner", "rotated:planner:subagent:call-1", "rotated"}
+	if !slices.Equal(ids, want) {
+		t.Fatalf("session ids = %q, want %q", ids, want)
+	}
+
+	parent.Replace(nil)
+	if child.Enabled() {
+		t.Fatal("hooks removed from the session still fire in its planner")
+	}
+	var none *Runner
+	if none.ForRole("planner") != nil {
+		t.Fatal("ForRole on a nil runner must stay a no-op runner")
 	}
 }

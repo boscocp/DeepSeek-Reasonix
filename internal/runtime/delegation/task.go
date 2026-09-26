@@ -110,7 +110,8 @@ type TaskTool struct {
 	// sub-agent gets its own use_capability frontend so ledger state stays
 	// isolated while connections reuse the parent Host.
 	capabilityRuntime *usecap.MCPCapabilityRuntime
-	isolated          *taskIsolation // nil unless the session offers worktree isolation
+	isolated          *taskIsolation               // nil unless the session offers worktree isolation
+	hooksForRole      func(string) agent.ToolHooks // nil: children fire no hooks
 }
 
 // TaskToolOptions holds the construction parameters for a TaskTool.
@@ -132,6 +133,8 @@ type TaskToolOptions struct {
 	SubagentModel                         string
 	SubagentEffort                        string
 	ResolveProvider                       func(string, string) (provider.Provider, *provider.Pricing, int, error)
+	// HooksForRole gives each child the session's hooks under a role of its own.
+	HooksForRole func(role string) agent.ToolHooks
 }
 
 // NewTaskToolWithOptions is the internal standard constructor for TaskTool.
@@ -157,6 +160,7 @@ func NewTaskToolWithOptions(opts TaskToolOptions) *TaskTool {
 		keepPolicy:       opts.KeepPolicy,
 		sysPrompt:        sysPrompt,
 		gate:             opts.Gate,
+		hooksForRole:     opts.HooksForRole,
 		subagentModel:    opts.SubagentModel,
 		subagentEffort:   opts.SubagentEffort,
 		resolveProvider:  opts.ResolveProvider,
@@ -918,6 +922,9 @@ func (t *TaskTool) subagentOptions(ctx context.Context, maxSteps int, pricing *p
 		RecoveryAgentID:   "subagent",
 		RecoveryTaskID:    recoveryTaskID,
 		MutationObserver:  mutationObserver,
+	}
+	if t.hooksForRole != nil {
+		opts.Hooks = t.hooksForRole(recoveryTaskID)
 	}
 	return opts
 }

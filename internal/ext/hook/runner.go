@@ -16,12 +16,21 @@ import (
 // (prompt/stop events) fire hooks through, so neither has to know how hooks load
 // or run. A nil *Runner is a valid no-op (no hooks configured).
 type Runner struct {
-	hooks     []ResolvedHook
+	set       *hookSet
 	cwd       string
 	spawner   Spawner
 	notify    func(Notice) // surface a non-pass hook outcome; may be nil
 	mu        sync.RWMutex
 	sessionID string
+	parent    *Runner // set by ForRole: the session id is read from it at fire time
+	role      string
+}
+
+// hookSet is what a session and every runner derived from it with ForRole
+// fire, so an edit reaches them all and a repeat is judged once for the user.
+type hookSet struct {
+	mu    sync.RWMutex
+	hooks []ResolvedHook
 	// lastOutcome holds the message each hook reported last, so a repeat of the
 	// same one is not surfaced again. Keyed by hook, so it is bounded by the
 	// configured hook count rather than by how often they run.
@@ -29,7 +38,8 @@ type Runner struct {
 }
 
 // SetSessionID updates the Claude-compatible session identifier used in hook
-// payloads. It is safe to call when a controller rotates sessions.
+// payloads. It is safe to call when a controller rotates sessions. A runner from
+// ForRole ignores it: its id is always derived from its parent's.
 func (r *Runner) SetSessionID(id string) {
 	if r == nil {
 		return
@@ -40,16 +50,36 @@ func (r *Runner) SetSessionID(id string) {
 }
 
 func (r *Runner) payload(event Event) Payload {
+	return Payload{Event: event, Cwd: r.cwd, SessionID: r.currentSessionID()}
+}
+
+func (r *Runner) currentSessionID() string {
+	if r.parent != nil {
+		if id := r.parent.currentSessionID(); id != "" {
+			return id + ":" + r.role
+		}
+		return r.role
+	}
 	r.mu.RLock()
-	id := r.sessionID
-	r.mu.RUnlock()
-	return Payload{Event: event, Cwd: r.cwd, SessionID: id}
+	defer r.mu.RUnlock()
+	return r.sessionID
 }
 
 // NewRunner builds a Runner. spawner nil uses DefaultSpawner; notify nil drops
 // non-blocking messages.
 func NewRunner(hooks []ResolvedHook, cwd string, spawner Spawner, notify func(Notice)) *Runner {
-	return &Runner{hooks: hooks, cwd: cwd, spawner: spawner, notify: notify}
+	return &Runner{set: &hookSet{hooks: hooks}, cwd: cwd, spawner: spawner, notify: notify}
+}
+
+// ForRole is a runner for an agent working under this session in its own
+// conversation — a planner, a guardian, a subagent — firing the same live hook
+// set in the same environment. Its session id is this runner's id at fire time
+// suffixed with ":"+role, so a rotation of the parent reaches it.
+func (r *Runner) ForRole(role string) *Runner {
+	if r == nil {
+		return nil
+	}
+	return &Runner{set: r.set, cwd: r.cwd, spawner: r.spawner, notify: r.notify, parent: r, role: role}
 }
 
 // Hooks returns the resolved hooks (for `/hooks` listing).
@@ -62,12 +92,12 @@ func (r *Runner) Replace(hooks []ResolvedHook) {
 	if r == nil {
 		return
 	}
-	r.mu.Lock()
-	r.hooks = hooks
+	r.set.mu.Lock()
+	r.set.hooks = hooks
 	// Edited hooks report from a clean slate: a message suppressed as a repeat
 	// of the old configuration says something new about the new one.
-	r.lastOutcome = nil
-	r.mu.Unlock()
+	r.set.lastOutcome = nil
+	r.set.mu.Unlock()
 }
 
 // Spawner is the interpreter binding this session's hooks already run under, so
@@ -85,9 +115,9 @@ func (r *Runner) snapshot() []ResolvedHook {
 	if r == nil {
 		return nil
 	}
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.hooks
+	r.set.mu.RLock()
+	defer r.set.mu.RUnlock()
+	return r.set.hooks
 }
 
 // Enabled reports whether any hooks are configured.
@@ -394,13 +424,13 @@ func (r *Runner) handle(rep Report) (bool, string) {
 // what it said last time, recording the message either way.
 func (r *Runner) outcomeChanged(o Outcome, msg string) bool {
 	key := strings.Join([]string{string(o.Hook.Scope), string(o.Hook.Event), o.Hook.Source, o.Hook.Command}, "\x00")
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.lastOutcome == nil {
-		r.lastOutcome = map[string]string{}
+	r.set.mu.Lock()
+	defer r.set.mu.Unlock()
+	if r.set.lastOutcome == nil {
+		r.set.lastOutcome = map[string]string{}
 	}
-	previous, seen := r.lastOutcome[key]
-	r.lastOutcome[key] = msg
+	previous, seen := r.set.lastOutcome[key]
+	r.set.lastOutcome[key] = msg
 	return !seen || previous != msg
 }
 

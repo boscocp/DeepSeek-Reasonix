@@ -600,6 +600,20 @@ The injected hook context is dynamic current-turn context. It does not change
 the stable system prompt, memory prefix, or tool schema, though dynamic content
 can still reduce cache reuse for that turn.
 
+Tool hooks (`PreToolUse`, `PostToolUse`, `PermissionRequest`), `PostLLMCall`
+and `PreCompact` fire in every agent a session runs. Each fires under a
+`session_id` derived from the parent session's id at the moment the hook runs:
+
+| Agent | Hook `session_id` |
+| --- | --- |
+| Executor | `<session>` |
+| Planner | `<session>:planner` |
+| Guardian | `<session>:guardian` |
+| `task`, `read_only_task`, `parallel_tasks`, `fleet`, `run_skill`, `read_only_skill` children | `<session>:subagent:<call>` |
+| `reasonix review` | a fresh id per run |
+
+`/new` or a branch switch moves every child to the new id along with the parent.
+
 ## Keyboard shortcuts
 
 Shortcuts are documented by client because users usually look for the keys that
@@ -1436,6 +1450,21 @@ the strict read-only entrances:
 | `read_only_skill` | The same isolation driving an existing skill |
 | `reasonix review` (CLI) | Read-only review of a diff or branch |
 | Desktop preview/review subagents | Read-only desktop analysis surfaces |
+
+`reasonix review` fires only the hooks you configured under the Reasonix home:
+the global `settings.json` and installed plugins.
+
+It never runs project hooks from the checkout being reviewed
+(`<root>/.reasonix/settings.json`). A branch under review is untrusted input, and
+a hook it declares would otherwise run with your environment and keys.
+
+The interpreter those hooks run under comes from your own `[tools.shell]`
+in the user config; the checkout's `reasonix.toml` cannot choose it.
+
+Review hooks start in the checkout root, so they can inspect it, but a bare
+command such as `python` never resolves to an executable the checkout ships:
+the hook process runs with `NoDefaultCurrentDirectoryInExePath=1`, which stops
+`cmd.exe` on Windows from searching the current directory first.
 
 In persisted sessions, `parallel_tasks` and `fleet` return a bounded preview
 plus one `Subagent reference` per completed child instead of concatenating every
