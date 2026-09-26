@@ -652,6 +652,7 @@ export const EN: Record<string, string> = {
   "查找文件 ×{n}": "Find files ×{n}",
   "列出目录 ×{n}": "List directories ×{n}",
   "{n} 项失败": "{n} failed",
+  "{n} 项运行中": "{n} running",
   "推荐": "Recommended",
   "其他 —— 自行填写": "Something else — I will write it",
   "你": "You",

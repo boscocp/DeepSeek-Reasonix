@@ -576,7 +576,8 @@ const ActivityGroup = memo(function ActivityGroup({
   opened: Record<string, boolean>;
   onOpened: Dispatch<SetStateAction<Record<string, boolean>>>;
 } & RowHandlers) {
-  const running = items.some((item) => item.t === "tool" && item.running);
+  const runs = items.filter((item) => item.t === "tool" && item.running).length;
+  const running = runs > 0;
   // Whether this group is open is held above it, because the group itself does
   // not survive the turn: a run of work starts as a row of its own and is
   // re-hosted under the sentence it belongs to once that sentence arrives,
@@ -596,10 +597,11 @@ const ActivityGroup = memo(function ActivityGroup({
     return count;
   }, 0);
   return (
-    <details className="activity-group" data-failed={failures ? "" : undefined} open={open} onToggle={(event) => event.currentTarget.open !== open && setOpen(event.currentTarget.open)}>
+    <details className="activity-group" data-failed={failures ? "" : undefined} data-running={running ? "" : undefined} open={open} onToggle={(event) => event.currentTarget.open !== open && setOpen(event.currentTarget.open)}>
       <summary>
         <StudioIcon name={running ? "clock" : failures ? "warning" : "check"} className="activity-status-icon" />
         <span className="activity-title">{t("执行过程")}</span>
+        {running && <span className="activity-running">{t("{n} 项运行中", { n: runs })}</span>}
         {failures > 0 && <span className="activity-errors">{t("{n} 项失败", { n: failures })}</span>}
         <span className="activity-count">{t("{count} 项操作", { count: calls })}</span>
         <StudioIcon name="down" className="activity-fold-icon" />
