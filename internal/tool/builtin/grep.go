@@ -233,9 +233,13 @@ func (g grepTool) runNative(ctx context.Context, pattern, path string, info os.F
 				if bytes.IndexByte(peek, 0) >= 0 {
 					return nil // binary, skip
 				}
-				// Detect encoding from the peek alone — sufficient for the
-				// UTF-8 vs GB18030 distinction (utf8.Valid on 8 KiB is reliable).
-				enc, _ = fileenc.Detect(peek)
+				// A full peek is only the start of the file and can end inside
+				// a character.
+				detect := fileenc.Detect
+				if n == len(peekBuf) {
+					detect = fileenc.DetectFragment
+				}
+				enc, _ = detect(peek)
 			}
 		}
 

@@ -42,7 +42,11 @@ func upgradeDeepSeekCatalogFileLocked(path string, write func(string, []byte, os
 	if crlf {
 		next = strings.ReplaceAll(next, "\n", "\r\n")
 	}
-	if err := write(resolved, fileencoding.Encode(next, encoding), info.Mode().Perm()); err != nil {
+	encoded, err := fileencoding.Encode(next, encoding)
+	if err != nil {
+		return false, fmt.Errorf("commit DeepSeek catalog upgrade: %w", err)
+	}
+	if err := write(resolved, encoded, info.Mode().Perm()); err != nil {
 		return false, fmt.Errorf("commit DeepSeek catalog upgrade: %w", err)
 	}
 	return true, nil

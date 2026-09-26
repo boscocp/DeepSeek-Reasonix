@@ -10189,17 +10189,18 @@ func (a *App) readFilePathForTab(tabID, displayPath, path string, forceSource bo
 		return out
 	}
 
-	// Trim any partial multi-byte rune at the truncation boundary BEFORE
-	// encoding detection. Without this, a large UTF-8 file truncated
-	// mid-character would fail utf8.Valid and be misdetected as GB18030
-	// or LossyUTF8, producing mojibake or a false binary classification.
+	// A truncated preview can end inside a character; the fragment keeps the
+	// whole ones and the next page starts at the split one.
+	detect := fileenc.Detect
 	if out.Truncated {
-		data = trimUTF8PartialSuffix(data)
+		detect = fileenc.DetectFragment
+	}
+	enc, data := detect(data)
+	if out.Truncated {
 		out.NextOffset = int64(len(data))
 	}
-	enc, _ := fileenc.Detect(data)
 	if enc == fileenc.LossyUTF8 {
-		out.Binary = true
+		out.Body = strings.ToValidUTF8(string(data), "\uFFFD")
 		return out
 	}
 	out.Body = string(fileenc.Decode(data, enc))

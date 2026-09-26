@@ -296,7 +296,10 @@ func upgradeOpenCodeGoFileWithWriterLocked(path string, write func(string, []byt
 	if crlf {
 		next = strings.ReplaceAll(next, "\n", "\r\n")
 	}
-	encoded := fileencoding.Encode(next, encoding)
+	encoded, err := fileencoding.Encode(next, encoding)
+	if err != nil {
+		return false, err
+	}
 	j.ConfigHash = openCodeGoDigest(encoded)
 	backup := resolved + ".opencode-go-v10.backup"
 	if _, err := os.Stat(backup); os.IsNotExist(err) {
