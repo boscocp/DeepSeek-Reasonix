@@ -225,7 +225,11 @@ func (m *model) send(steer bool) tea.Cmd {
 		return m.openPicker()
 	case display == "/version":
 		m.composer.Reset()
-		m.tr.AddNotice("info", "reasonix "+m.opts.Version)
+		version := m.opts.Version
+		if version == "" {
+			version = "dev"
+		}
+		m.tr.AddNotice("info", "reasonix "+version)
 		return m.commit()
 	}
 	text := m.pastes.expand(display)
