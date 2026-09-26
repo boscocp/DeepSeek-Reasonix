@@ -440,6 +440,7 @@ type Event struct {
 	RuntimeEpoch     string                    // originating controller incarnation
 	SubmissionID     string                    // exact optimistic submit correlation
 	PromptKind       string                    // interactive prompt kind for lifecycle events
+	Replayed         bool                      // pending prompt re-emitted for a frontend rebuilding its card; not a new request
 	InteractionState string                    // PromptAnswered: answered | rejected | cancelled | unavailable
 	DomainKind       string                    // host-internal state event committed atomically with this lifecycle event
 	DomainPayload    json.RawMessage           // host-internal payload for DomainKind

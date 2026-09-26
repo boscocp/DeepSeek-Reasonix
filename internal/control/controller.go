@@ -2559,19 +2559,21 @@ func (c *Controller) emitPendingPrompts(sink event.Sink, approvals []event.Appro
 		if identity, ok := c.promptOwner.Identity(a.ID); ok {
 			a.TurnID = identity.TurnID
 		}
-		sink.Emit(c.approvalRequestEvent(a))
+		e := c.approvalRequestEvent(a)
+		e.Replayed = true
+		sink.Emit(e)
 	}
 	for _, a := range asks {
 		if identity, ok := c.promptOwner.Identity(a.ID); ok {
 			a.TurnID = identity.TurnID
 		}
-		sink.Emit(event.Event{Kind: event.AskRequest, TurnID: a.TurnID, ItemID: a.ID, Ask: a})
+		sink.Emit(event.Event{Kind: event.AskRequest, TurnID: a.TurnID, ItemID: a.ID, Ask: a, Replayed: true})
 	}
 	for _, i := range interactions {
 		if identity, ok := c.promptOwner.Identity(i.ID); ok {
 			i.TurnID = identity.TurnID
 		}
-		sink.Emit(event.Event{Kind: event.MCPInteractionRequest, TurnID: i.TurnID, ItemID: i.ID, MCPInteraction: i})
+		sink.Emit(event.Event{Kind: event.MCPInteractionRequest, TurnID: i.TurnID, ItemID: i.ID, MCPInteraction: i, Replayed: true})
 	}
 }
 
