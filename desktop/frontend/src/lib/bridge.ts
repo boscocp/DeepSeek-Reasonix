@@ -434,7 +434,7 @@ export interface AppBindings extends AttachmentBindings, SessionExportBindings, 
   // Same drained-prompt-id contract as SetModeForTab.
   SetToolApprovalModeForTab(tabID: string, mode: string): Promise<string[] | void>;
   PermissionSnapshotForTab(tabID: string): Promise<PermissionSnapshot>;
-  SetPermissionPresetForTab(tabID: string, preset: string, expectedRevision: number): Promise<PermissionSnapshot>;
+  SetPermissionPresetForTab(tabID: string, expectedSessionID: string, preset: string, expectedRevision: number): Promise<PermissionSnapshot>;
   RevokePermissionGrantForTab(tabID: string, scope: string, target: string, expectedRevision: number): Promise<PermissionSnapshot>;
   // Atomically applies the controller-facing composer profile and reports any
   // approval prompts drained by the resulting tool-approval posture.
@@ -3268,8 +3268,9 @@ function makeMockApp(): MockAppBindings {
             },
           };
         },
-        async SetPermissionPresetForTab(tabID, preset, expectedRevision) {
+        async SetPermissionPresetForTab(tabID, expectedSessionID, preset, expectedRevision) {
           const current = await this.PermissionSnapshotForTab(tabID);
+          if (current.sessionId !== expectedSessionID) throw new Error("reasonix_error:permission_session_changed");
           if (current.revision !== expectedRevision) throw new Error("permission revision changed");
           await this.SetToolApprovalModeForTab(tabID, preset);
           mockTabs = mockTabs.map((tab) => tab.id === tabID ? { ...tab, permissionRevision: current.revision + 1 } as TabMeta : tab);

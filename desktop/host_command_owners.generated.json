@@ -9351,6 +9351,7 @@
       "resolver": "App.SetPermissionPresetForTab",
       "inputs": [
         "tabID",
+        "expectedSessionID",
         "preset",
         "expectedRevision"
       ]

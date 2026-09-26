@@ -2,8 +2,11 @@ import { useMemo, type Dispatch, type SetStateAction } from "react";
 import { useCommittedCommand } from "../lib/useCommittedCommand";
 import { useRemoteComposerProfileSync } from "../lib/useRemoteComposerIntegration";
 import {
+  composerProfileForOwner,
   composerProfileFromMeta,
   composerProfileFromTab,
+  composerProfileOwner,
+  composerProfileOwnersConflict,
   composerProfileMode,
   defaultComposerProfile,
   displayedComposerProfileCollaborationMode,
@@ -36,9 +39,10 @@ export type ComposerProfileProjectionInput = {
  */
 export function useComposerProfileProjection(input: ComposerProfileProjectionInput) {
   const { activeTabId, activeTab, meta, profilesByTab, setProfilesByTab, tabMetas, remote, remoteSession } = input;
-  const activeComposerProfile = activeTabId ? profilesByTab[activeTabId] : undefined;
+  const activeOwner = composerProfileOwner(activeTab);
+  const activeComposerProfile = activeTabId ? composerProfileForOwner(profilesByTab[activeTabId], activeOwner) : undefined;
   const backendActiveComposerProfile = useMemo(() => {
-    if (meta) {
+    if (meta && !composerProfileOwnersConflict(composerProfileOwner(meta), activeOwner)) {
       return composerProfileFromMeta(
         meta,
         activeTab ? composerProfileMode(composerProfileFromTab(activeTab, activeComposerProfile?.toolApprovalMode)) : undefined,
@@ -46,7 +50,7 @@ export function useComposerProfileProjection(input: ComposerProfileProjectionInp
       );
     }
     return composerProfileFromTab(activeTab, activeComposerProfile?.toolApprovalMode);
-  }, [activeComposerProfile?.toolApprovalMode, activeTab, meta]);
+  }, [activeComposerProfile?.toolApprovalMode, activeOwner, activeTab, meta]);
   const composerProfile = activeTabId
     ? activeComposerProfile ?? backendActiveComposerProfile
     : defaultComposerProfile;
@@ -67,7 +71,8 @@ export function useComposerProfileProjection(input: ComposerProfileProjectionInp
   const patchComposerProfileForTab = useCommittedCommand((tabId: string, patch: Partial<Omit<ComposerProfile, "pending">>, pendingFields: ComposerProfileField[]) => {
     if (!tabId) return;
     setProfilesByTab((current) => {
-      const base = current[tabId] ?? composerProfileFromTab(tabMetas.find((tab) => tab.id === tabId));
+      const tab = tabMetas.find((value) => value.id === tabId);
+      const base = composerProfileForOwner(current[tabId], composerProfileOwner(tab)) ?? composerProfileFromTab(tab);
       return patchComposerProfile(current, tabId, base, patch, pendingFields);
     });
   });

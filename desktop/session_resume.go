@@ -236,7 +236,8 @@ func (a *App) replaceControllerForSessionOpenLocked(ctx context.Context, tab *Wo
 		a.noticeForTab(tab.ID, fmt.Sprintf("model %q is no longer available; switched to %s", requestedModel, targetModel))
 	}
 	a.bindControllerDisplayRecorder(candidate)
-	runtime := prepareCanonicalControllerRuntime(candidate, snap)
+	_, fallbackPreset := desktopNewSessionDefaults(snap.scope, root)
+	runtime := prepareCanonicalControllerRuntime(candidate, snap, a.sessionPresets.restore(ref.SessionID, fallbackPreset))
 
 	confirmed, err := a.canonicalSessionWorkspace(ctx, ref)
 	if err != nil {

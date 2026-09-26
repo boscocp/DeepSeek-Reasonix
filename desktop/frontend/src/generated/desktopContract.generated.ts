@@ -3,7 +3,7 @@
 
 export const DESKTOP_PROTOCOL_VERSION = 11;
 
-export const DESKTOP_CONTRACT_DIGEST = "sha256:8bd3b74b195c2d40ffd312b3df9b52a65d3836f894ca6be1e2459ae56ce03f78";
+export const DESKTOP_CONTRACT_DIGEST = "sha256:3a11d9c6aa97fcd1400b8034bc5736de4cfa28fbb5fd69dfe9fab1a213259639";
 
 export const DESKTOP_COMMANDS = [
   "AIRenameSession",
@@ -6580,7 +6580,7 @@ export interface GeneratedDesktopCommands {
   SetModelForTab(arg0: string, arg1: string): Promise<void>;
   SetNetwork(arg0: NetworkView): Promise<void>;
   SetPermissionMode(arg0: string): Promise<void>;
-  SetPermissionPresetForTab(arg0: string, arg1: string, arg2: number): Promise<PermissionSnapshot>;
+  SetPermissionPresetForTab(arg0: string, arg1: string, arg2: string, arg3: number): Promise<PermissionSnapshot>;
   SetPlanMode(arg0: boolean): Promise<void>;
   SetPlannerModel(arg0: string): Promise<void>;
   SetPluginEnabled(arg0: string, arg1: boolean): Promise<void>;

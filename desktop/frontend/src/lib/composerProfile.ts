@@ -26,6 +26,8 @@ export interface ComposerProfile {
   goal: string;
   qualityFloor: QualityFloor;
   pending: ComposerProfilePending;
+  /** Session the values were read for; "" while the surface has none. */
+  owner?: string;
 }
 
 export type ComposerProfilesByTab = Record<string, ComposerProfile>;
@@ -48,6 +50,22 @@ function activeGoal(goal?: string, status?: GoalStatus, view?: GoalLifecycleView
   if (view) return view.phase === "complete" ? "" : trimmed;
   if (status && status !== "running") return "";
   return trimmed;
+}
+
+type ComposerProfileOwnerSource = { sessionId?: string; session?: { sessionId?: string } | null; sessionPath?: string } | null | undefined;
+
+export function composerProfileOwner(source: ComposerProfileOwnerSource): string {
+  return (source?.session?.sessionId || source?.sessionId || source?.sessionPath || "").trim();
+}
+
+// A surface gaining its first session keeps its profile; moving between two
+// sessions does not, because a preset belongs to the session it was set for.
+export function composerProfileOwnersConflict(a: string | undefined, b: string | undefined): boolean {
+  return Boolean(a && b && a !== b);
+}
+
+export function composerProfileForOwner(profile: ComposerProfile | undefined, owner: string): ComposerProfile | undefined {
+  return profile && !composerProfileOwnersConflict(profile.owner, owner) ? profile : undefined;
 }
 
 function profileWithPending(profile: Omit<ComposerProfile, "pending">, pending: ComposerProfilePending = {}): ComposerProfile {
@@ -74,6 +92,7 @@ export function composerProfileFromTab(tab?: TabMeta | null, fallback?: ToolAppr
     ),
     goal,
     qualityFloor: tab.qualityFloor ?? "standard",
+    owner: composerProfileOwner(tab),
   });
 }
 
@@ -93,6 +112,7 @@ export function composerProfileFromMeta(meta?: Meta | null, legacyMode?: Mode, f
     toolApprovalMode,
     goal,
     qualityFloor: meta.qualityFloor ?? "standard",
+    owner: composerProfileOwner(meta),
   });
 }
 
@@ -124,11 +144,12 @@ function profilesEqual(a: ComposerProfile | undefined, b: ComposerProfile | unde
     && a.toolApprovalMode === b.toolApprovalMode
     && a.goal === b.goal
     && a.qualityFloor === b.qualityFloor
+    && (a.owner ?? "") === (b.owner ?? "")
     && profileFields.every((field) => Boolean(a.pending[field]) === Boolean(b.pending[field]));
 }
 
 export function reconcileComposerProfile(current: ComposerProfile | undefined, backend: ComposerProfile): ComposerProfile {
-  if (!current) return { ...backend, pending: {} };
+  if (!current || composerProfileOwnersConflict(current.owner, backend.owner)) return { ...backend, pending: {} };
 
   const pending: ComposerProfilePending = {};
   const next: ComposerProfile = { ...backend, pending };
@@ -155,7 +176,8 @@ export function hydrateComposerProfilesFromTabs(current: ComposerProfilesByTab, 
   let changed = false;
 
   for (const tab of tabs) {
-    const profile = reconcileComposerProfile(current[tab.id], composerProfileFromTab(tab, current[tab.id]?.toolApprovalMode));
+    const previous = composerProfileForOwner(current[tab.id], composerProfileOwner(tab));
+    const profile = reconcileComposerProfile(previous, composerProfileFromTab(tab, previous?.toolApprovalMode));
     next[tab.id] = profile;
     if (!profilesEqual(current[tab.id], profile)) changed = true;
   }
@@ -167,8 +189,10 @@ export function hydrateComposerProfilesFromTabs(current: ComposerProfilesByTab, 
   return changed ? next : current;
 }
 
-export function hydrateComposerProfileFromMeta(current: ComposerProfilesByTab, tabId: string, meta: Meta): ComposerProfilesByTab {
-  const previous = current[tabId];
+export function hydrateComposerProfileFromMeta(current: ComposerProfilesByTab, tabId: string, meta: Meta, tab?: TabMeta | null): ComposerProfilesByTab {
+  const owner = composerProfileOwner(meta);
+  if (composerProfileOwnersConflict(composerProfileOwner(tab), owner)) return current;
+  const previous = composerProfileForOwner(current[tabId], owner);
   const backend = composerProfileFromMeta(
     meta,
     previous ? composerProfileMode(previous) : undefined,
@@ -186,7 +210,7 @@ export function patchComposerProfile(
   patch: Partial<Omit<ComposerProfile, "pending">>,
   pendingFields: ComposerProfileField[],
 ): ComposerProfilesByTab {
-  const previous = current[tabId] ?? base ?? defaultComposerProfile;
+  const previous = composerProfileForOwner(current[tabId], base?.owner ?? "") ?? base ?? defaultComposerProfile;
   const pending: ComposerProfilePending = { ...previous.pending };
   for (const field of pendingFields) pending[field] = true;
   const profile: ComposerProfile = {

@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 
 	"reasonix/internal/permissionpreset"
 	"reasonix/internal/sandbox"
@@ -38,8 +39,36 @@ type PermissionSnapshot struct {
 	Capabilities  PermissionCapabilities `json:"capabilities"`
 }
 
+const (
+	presetSandboxProbe int32 = iota
+	presetSandboxPinnedOn
+	presetSandboxPinnedOff
+)
+
+// presetSandbox selects what the offered presets assume about the host
+// sandbox; only tests pin it, the product always probes the host.
+var presetSandbox atomic.Int32
+
+// SetPresetSandboxForTest pins whether the offered presets see a host sandbox,
+// so preset tests behave the same on hosts with and without one.
+func SetPresetSandboxForTest(available bool) (restore func()) {
+	next := presetSandboxPinnedOff
+	if available {
+		next = presetSandboxPinnedOn
+	}
+	prev := presetSandbox.Swap(next)
+	return func() { presetSandbox.Store(prev) }
+}
+
 func platformPermissionCapabilities() PermissionCapabilities {
-	return permissionCapabilitiesForPlatform(runtime.GOOS, sandbox.Available(), sandbox.UnavailableMessage())
+	available := sandbox.Available()
+	switch presetSandbox.Load() {
+	case presetSandboxPinnedOn:
+		available = true
+	case presetSandboxPinnedOff:
+		available = false
+	}
+	return permissionCapabilitiesForPlatform(runtime.GOOS, available, sandbox.UnavailableMessage())
 }
 
 func permissionCapabilitiesForPlatform(goos string, available bool, unavailableReason string) PermissionCapabilities {
@@ -133,6 +162,16 @@ func (c *Controller) SetPermissionPreset(preset string, expectedRevision uint64)
 	}
 	drained := c.applyToolApprovalModeLocked(raw)
 	return c.PermissionSnapshot(), drained, nil
+}
+
+// InvalidatePermissionSnapshots advances the revision with no permission
+// change, so a compare-and-set against any earlier snapshot is refused.
+func (c *Controller) InvalidatePermissionSnapshots() {
+	c.permissionMu.Lock()
+	defer c.permissionMu.Unlock()
+	c.permissionStateMu.Lock()
+	c.permissionRevision.Add(1)
+	c.permissionStateMu.Unlock()
 }
 
 // RevokeSessionGrant removes one exact in-memory authorization. Revocation is
