@@ -8,6 +8,7 @@ import (
 
 	"reasonix/internal/agent"
 	"reasonix/internal/provider"
+	"reasonix/internal/session"
 )
 
 // EnsureSessionPath pins a fresh auto-save file for this controller when none is
@@ -18,11 +19,21 @@ import (
 // per-surface copies of this logic (the CLI chat/serve fresh branches and the
 // bot's former ensureControllerSessionPath).
 func (c *Controller) EnsureSessionPath() {
+	c.ensureSessionPath(session.CreateOptions{})
+}
+
+// EnsureHeadlessRunSessionPath is EnsureSessionPath for a one-shot run: a
+// fresh store records that kind so conversation lists can leave it out.
+func (c *Controller) EnsureHeadlessRunSessionPath() {
+	c.ensureSessionPath(session.CreateOptions{Kind: session.SessionKindHeadlessRun})
+}
+
+func (c *Controller) ensureSessionPath(options session.CreateOptions) {
 	if _, ok := c.SessionRef(); ok {
 		return
 	}
 	if service, _, exclusive := c.v3Binding(); exclusive && service != nil {
-		if _, err := c.BindFreshSession(context.Background(), ""); err != nil {
+		if _, err := c.BindFreshSessionWithOptions(context.Background(), options); err != nil {
 			c.failTurnEventLedger(err)
 		}
 		return

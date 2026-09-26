@@ -55,11 +55,19 @@ const (
 	ReadWrite AccessMode = "write"
 )
 
+// SessionKind records what created a store; empty is an ordinary conversation.
+type SessionKind string
+
+// SessionKindHeadlessRun marks a one-shot `reasonix run`/`-p` store. It stays
+// resumable, but it is not a conversation a sidebar should offer.
+const SessionKindHeadlessRun SessionKind = "headless-run"
+
 type CreateOptions struct {
 	SessionID       string
 	CWD             string
 	ParentSessionID string
 	Origin          SessionOrigin
+	Kind            SessionKind
 }
 
 type SessionInfo struct {
@@ -80,6 +88,7 @@ type SessionInfo struct {
 	CWD             string
 	ParentSessionID string
 	Origin          SessionOrigin
+	Kind            SessionKind
 	Path            string
 	Error           string
 }
@@ -167,11 +176,14 @@ func (p *FilesystemPersistence) Create(options CreateOptions) (*Session, error) 
 		return nil, err
 	}
 	options.SessionID = id
+	if options.Kind != "" && options.Kind != SessionKindHeadlessRun {
+		return nil, fmt.Errorf("session: unsupported session kind %q", options.Kind)
+	}
 	header, err := headerForCreate(options)
 	if err != nil {
 		return nil, err
 	}
-	return createWithOptions(dir, id, OpenOptions{ExternalHistory: true}, header)
+	return createWithOptions(dir, id, OpenOptions{ExternalHistory: true}, header, options.Kind)
 }
 
 func (p *FilesystemPersistence) Open(sessionID string, mode AccessMode) (*Session, error) {
