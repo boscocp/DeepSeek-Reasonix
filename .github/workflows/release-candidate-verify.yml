@@ -74,12 +74,14 @@ jobs:
           node scripts/verify-release-artifact-archive.mjs "$RUNNER_TEMP/payload-artifact.json" "$RUNNER_TEMP/payload.zip"
           mkdir payload
           unzip -q "$RUNNER_TEMP/payload.zip" -d payload
-          while IFS= read -r -d '' file; do
-            gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" \
-              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-candidate.yml" \
-              --signer-digest "$CONTROL_SHA" --source-ref refs/heads/main-v2 \
-              --deny-self-hosted-runners >/dev/null
-          done < <(find payload -type f -print0)
+          # One provenance check per payload file; each is a network round trip,
+          # so they run eight at a time and any single failure fails the step.
+          signer_digest="$CONTROL_SHA"
+          find payload -type f -print0 | xargs -0 -P 8 -I{} \
+            gh attestation verify {} --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-candidate.yml" \
+            --signer-digest "$signer_digest" --source-ref refs/heads/main-v2 \
+            --deny-self-hosted-runners >/dev/null
           node scripts/release-candidate.mjs verify-rehearsal payload record/record.json >/dev/null
           git fetch origin main-v2
           git merge-base --is-ancestor "${{ steps.inspected.outputs.source_sha }}" origin/main-v2

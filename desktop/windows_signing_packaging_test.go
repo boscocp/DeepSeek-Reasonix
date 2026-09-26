@@ -69,8 +69,10 @@ func TestWindowsReleaseSignsPayloadBeforeRepackaging(t *testing.T) {
 		"name: Upload Windows signing inputs",
 		"name: Restore both native-tested Windows payloads",
 		"name: Connect to Certum",
-		"name: Finalize amd64 in the shared Certum session",
-		"name: Finalize arm64 in the shared Certum session",
+		"name: Sign both payloads in the shared Certum session",
+		"name: Package both architectures in parallel",
+		"name: Seal amd64 in the shared Certum session",
+		"name: Seal arm64 in the shared Certum session",
 		"name: Upload signed package size reports",
 	}
 	last := -1
@@ -96,8 +98,9 @@ func TestWindowsReleaseSignsPayloadBeforeRepackaging(t *testing.T) {
 		`ref: ${{ github.workflow_sha }}`,
 		`path: release-control`,
 		`node desktop/packaging/smoke.mjs`,
-		`finalize-windows-signed-candidate.sh amd64`,
-		`finalize-windows-signed-candidate.sh arm64`,
+		`FINALIZE_PHASE=sign bash release-control/scripts/finalize-windows-signed-candidate.sh`,
+		`FINALIZE_PHASE=package bash`,
+		`FINALIZE_PHASE=seal bash`,
 	} {
 		if !strings.Contains(workflow, want) {
 			t.Errorf("desktop release workflow is missing signing contract %q", want)

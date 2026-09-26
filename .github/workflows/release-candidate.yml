@@ -184,18 +184,31 @@ jobs:
           RELEASE_SOURCE_SHA: ${{ github.sha }}
           RELEASE_CI_WAIT_SECONDS: 1800
         run: bash scripts/verify-release-push-ci.sh "$RELEASE_SOURCE_SHA"
-      - name: Checkout immutable product for notes validation
-        if: steps.existing.outputs.reuse != 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+  # Release-specific but not an input to the native builds: it runs beside
+  # them and gates only the seal, so it adds nothing to the critical path.
+  notes:
+    name: validate embedded notes and cache identity alongside native builds
+    needs: resolve
+    if: needs.resolve.outputs.reuse != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.sha }}
-          path: product
           persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
       - name: Validate embedded notes and cache identity inputs
-        if: steps.existing.outputs.reuse != 'true'
-        working-directory: product
         env:
-          DOCS_BUILD_VERSION: v${{ steps.candidate.outputs.version }}
+          DOCS_BUILD_VERSION: v${{ needs.resolve.outputs.version }}
           DOCS_SOURCE_REVISION: ${{ github.sha }}
         run: |
           node scripts/release-notes.mjs validate
@@ -261,10 +274,11 @@ jobs:
 
   seal:
     name: seal reusable release candidate
-    needs: [resolve, cli-npm, desktop]
+    needs: [resolve, notes, cli-npm, desktop]
     if: >-
       always() && !cancelled() && needs.resolve.outputs.reuse != 'true' &&
-      needs.resolve.result == 'success' && needs.cli-npm.result == 'success' && needs.desktop.result == 'success'
+      needs.resolve.result == 'success' && needs.notes.result == 'success' &&
+      needs.cli-npm.result == 'success' && needs.desktop.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -411,7 +425,7 @@ jobs:
 
   metrics:
     name: record candidate timing
-    needs: [resolve, cli-npm, desktop, seal]
+    needs: [resolve, notes, cli-npm, desktop, seal]
     if: ${{ always() && !cancelled() }}
     continue-on-error: true
     runs-on: ubuntu-latest
