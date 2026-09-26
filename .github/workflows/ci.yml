@@ -648,6 +648,8 @@ jobs:
       - name: Test native browser foreground runtime
         if: matrix.group == 'transcript'
         timeout-minutes: 3
+        env:
+          REASONIX_BROWSER_UNSETTLED_INPUT: "1"
         run: xvfb-run -a node electron/scripts/browser-runtime-smoke.mjs
       - name: Upload Linux browser runtime evidence
         if: always() && matrix.group == 'transcript'
