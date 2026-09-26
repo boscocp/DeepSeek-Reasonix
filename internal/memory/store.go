@@ -221,12 +221,16 @@ func (s Store) archiveLocked(name string) (string, error) {
 		if dir == "" {
 			continue
 		}
+		lines, contains, err := indexLinesExceptIn(dir, name)
+		if err != nil {
+			return "", err
+		}
 		p, err := archiveInDir(dir, name)
 		if err != nil {
 			return "", err
 		}
-		if p != "" || indexContainsIn(dir, name) {
-			if err := flushIndexIn(dir, indexLinesExceptIn(dir, name)); err != nil {
+		if p != "" || contains {
+			if err := flushIndexIn(dir, lines); err != nil {
 				return "", err
 			}
 		}
@@ -238,12 +242,16 @@ func (s Store) archiveLocked(name string) (string, error) {
 }
 
 func archiveMemoryInDir(dir, name string) (string, error) {
+	lines, contains, err := indexLinesExceptIn(dir, name)
+	if err != nil {
+		return "", err
+	}
 	path, err := archiveInDir(dir, name)
 	if err != nil {
 		return "", err
 	}
-	if path != "" || indexContainsIn(dir, name) {
-		if err := flushIndexIn(dir, indexLinesExceptIn(dir, name)); err != nil {
+	if path != "" || contains {
+		if err := flushIndexIn(dir, lines); err != nil {
 			return "", err
 		}
 	}
@@ -373,30 +381,34 @@ func repairOwnerWrite(root *os.Root, path string, dir bool) {
 // MEMORY.md.
 var indexLineRe = regexp.MustCompile(`(?m)^\s*-\s\[.+?\]\(([^)]+)\.md\)\s*—\s.*$`)
 
-// indexLinesExceptIn returns the managed MEMORY.md lines keyed by filename stem
-// in the given directory, dropping the entry for name (a missing index → empty map).
-func indexLinesExceptIn(dir, name string) map[string]string {
-	existing, _ := fileencoding.ReadFileUTF8(filepath.Join(dir, indexFile))
-	keep := map[string]string{}
-	for line := range strings.SplitSeq(string(existing), "\n") {
-		if mt := indexLineRe.FindStringSubmatch(line); mt != nil && mt[1] != name {
-			keep[mt[1]] = strings.TrimRight(line, "\r")
-		}
+// readIndexIn treats a missing index as empty, but does not hide other read errors.
+func readIndexIn(dir string) ([]byte, error) {
+	existing, err := fileencoding.ReadFileUTF8(filepath.Join(dir, indexFile))
+	if os.IsNotExist(err) {
+		return nil, nil
 	}
-	return keep
+	return existing, err
 }
 
-func indexContainsIn(dir, name string) bool {
-	existing, err := fileencoding.ReadFileUTF8(filepath.Join(dir, indexFile))
+// indexLinesExceptIn returns the managed MEMORY.md lines keyed by filename stem,
+// dropping the entry for name and reporting whether it was present.
+func indexLinesExceptIn(dir, name string) (map[string]string, bool, error) {
+	existing, err := readIndexIn(dir)
 	if err != nil {
-		return false
+		return nil, false, err
 	}
+	keep := map[string]string{}
+	contains := false
 	for line := range strings.SplitSeq(string(existing), "\n") {
-		if mt := indexLineRe.FindStringSubmatch(line); mt != nil && mt[1] == name {
-			return true
+		if mt := indexLineRe.FindStringSubmatch(line); mt != nil {
+			if mt[1] == name {
+				contains = true
+			} else {
+				keep[mt[1]] = strings.TrimRight(line, "\r")
+			}
 		}
 	}
-	return false
+	return keep, contains, nil
 }
 
 // flushIndexIn rewrites MEMORY.md in the given directory from the managed lines,
@@ -404,7 +416,10 @@ func indexContainsIn(dir, name string) bool {
 // new managed entries are appended in sorted order.
 func flushIndexIn(dir string, lines map[string]string) error {
 	path := filepath.Join(dir, indexFile)
-	existing, _ := fileencoding.ReadFileUTF8(path)
+	existing, err := readIndexIn(dir)
+	if err != nil {
+		return err
+	}
 	processed := map[string]bool{}
 	var preserved strings.Builder
 	preservedEmpty := true
@@ -457,7 +472,10 @@ func flushIndexIn(dir string, lines map[string]string) error {
 // reindexIn rewrites the MEMORY.md line for name in the given directory,
 // preserving every other managed line.
 func reindexIn(dir, name string, m Memory) error {
-	lines := indexLinesExceptIn(dir, name)
+	lines, _, err := indexLinesExceptIn(dir, name)
+	if err != nil {
+		return err
+	}
 	lines[name] = renderIndexLine(name, m)
 	return flushIndexIn(dir, lines)
 }
