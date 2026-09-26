@@ -101,8 +101,9 @@ jobs:
       - run: node bench/app-memory-prepare.mjs "$RUNNER_TEMP/app-memory-build"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: app-memory-build-${{ github.run_id }}-${{ github.run_attempt }}
+          name: app-memory-build-${{ github.run_id }}
           path: ${{ runner.temp }}/app-memory-build
+          overwrite: true
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
@@ -139,7 +140,7 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: app-memory-build-${{ github.run_id }}-${{ github.run_attempt }}
+          name: app-memory-build-${{ github.run_id }}
           path: ${{ runner.temp }}/app-memory-build
       - run: cp -a "$RUNNER_TEMP/app-memory-build/dist/." dist/
       - name: Run complete independent memory process
@@ -152,8 +153,9 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
-          name: app-memory-shard-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: app-memory-shard-${{ matrix.shard }}-${{ github.run_id }}
           path: ${{ runner.temp }}/app-memory-results
+          overwrite: true
           if-no-files-found: error
           retention-days: 7
 
@@ -192,12 +194,12 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         if: needs.changes.outputs.memory == 'true'
         with:
-          pattern: app-memory-shard-*-${{ github.run_id }}-${{ github.run_attempt }}
+          pattern: app-memory-shard-*-${{ github.run_id }}
           path: ${{ runner.temp }}/app-memory-reports
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         if: needs.changes.outputs.memory == 'true'
         with:
-          name: app-memory-build-${{ github.run_id }}-${{ github.run_attempt }}
+          name: app-memory-build-${{ github.run_id }}
           path: ${{ runner.temp }}/app-memory-build
       - name: Verify same-build complete protocol
         if: needs.changes.outputs.memory == 'true'
