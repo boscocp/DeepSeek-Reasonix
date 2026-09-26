@@ -17,6 +17,7 @@ type desktopPersistenceState struct {
 	desktopSessions             desktopSessionState
 	desktopDrafts               *draftstate.Store
 	sessionUI                   *sessionui.Store
+	sessionPresets              *sessionPresetStore
 	manualCreationMu            sync.Mutex
 	manualCreationTasks         sync.WaitGroup
 	manualCreations             *manualCreationManager
@@ -33,6 +34,7 @@ func newDesktopPersistenceState() desktopPersistenceState {
 		desktopSessions:      newDesktopSessionState(),
 		desktopDrafts:        draftstate.New(config.DesktopDraftStatePath()),
 		sessionUI:            sessionui.New(config.DesktopSessionUIStatePath()),
+		sessionPresets:       newSessionPresetStore(),
 		legacyCleanup:        legacycleanup.New(config.DesktopLegacyEmptySessionCleanupPath()),
 		desktopMigrationDone: make(chan struct{}),
 	}

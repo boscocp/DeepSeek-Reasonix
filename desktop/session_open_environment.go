@@ -57,9 +57,12 @@ func (a *App) finishSessionOpenEnvironment(prepared *sessionOpenEnvironment, com
 	}
 }
 
-func prepareCanonicalControllerRuntime(candidate control.SessionAPI, snap tabRuntimeSnapshot) normalizedTabRuntime {
+// preset is the target session's own restored value; the source surface's
+// preset never crosses into another session.
+func prepareCanonicalControllerRuntime(candidate control.SessionAPI, snap tabRuntimeSnapshot, preset string) normalizedTabRuntime {
 	candidate.EnableInteractiveApproval()
 	runtime := snap.normalizedRuntime()
+	runtime.toolApprovalMode = normalizeToolApprovalMode(preset)
 	applyTabToolApprovalModeToController(candidate, runtime.toolApprovalMode)
 	applyTabQualityFloorToController(candidate, runtime.qualityFloor)
 	runtime.collaborationMode, runtime.legacyGoal = "normal", ""

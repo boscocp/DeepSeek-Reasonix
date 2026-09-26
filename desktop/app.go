@@ -787,9 +787,13 @@ func (a *App) restoreOrBuildTabs() {
 			// from re-seeding the cleared goal into the rotated session. A
 			// session without a sidecar keeps the persisted goal (legacy).
 			restoreRuntime := prepareRestoredTabIdentity(tab, entry)
-			tab.toolApprovalMode = normalizeToolApprovalMode(entry.ToolApprovalMode)
-			if tab.toolApprovalMode == control.ToolApprovalAsk && tabModeHasAutoApproveTools(entry.Mode) {
-				tab.toolApprovalMode = control.ToolApprovalYolo
+			if id := strings.TrimSpace(entry.SessionID); id != "" {
+				tab.toolApprovalMode = a.sessionPresets.restore(id, tab.toolApprovalMode)
+			} else {
+				tab.toolApprovalMode = normalizeToolApprovalMode(entry.ToolApprovalMode)
+				if tab.toolApprovalMode == control.ToolApprovalAsk && tabModeHasAutoApproveTools(entry.Mode) {
+					tab.toolApprovalMode = control.ToolApprovalYolo
+				}
 			}
 			tab.SessionPath = strings.TrimSpace(entry.SessionPath)
 			tab.SessionID = strings.TrimSpace(entry.SessionID)
@@ -843,7 +847,11 @@ func desktopNewSessionDefaults(scope, workspaceRoot string) (string, string) {
 			modelCfg = cfg
 		}
 	}
-	return resolveNewSessionModel(modelCfg), normalizeToolApprovalMode(userCfg.DesktopDefaultToolApprovalMode())
+	return resolveNewSessionModel(modelCfg), newSessionPreset(userCfg)
+}
+
+func newSessionPreset(userCfg *config.Config) string {
+	return normalizeToolApprovalMode(userCfg.DesktopDefaultToolApprovalMode())
 }
 
 // resolveNewSessionModel picks the model a fresh session starts on. A
@@ -6464,9 +6472,10 @@ func (a *App) PermissionSnapshotForTab(tabID string) (control.PermissionSnapshot
 	return ctrl.PermissionSnapshot(), nil
 }
 
-// SetPermissionPresetForTab applies a revision-checked permission update so a
-// stale renderer cannot approve against a newer session state.
-func (a *App) SetPermissionPresetForTab(tabID, preset string, expectedRevision uint64) (control.PermissionSnapshot, error) {
+// SetPermissionPresetForTab applies a permission update fenced by the session
+// and revision of the snapshot the caller read. The revision alone is per
+// controller, so a snapshot of another session can carry the same number.
+func (a *App) SetPermissionPresetForTab(tabID, expectedSessionID, preset string, expectedRevision uint64) (control.PermissionSnapshot, error) {
 	if a.isRemoteTab(tabID) {
 		if err := a.requireRemoteExecutionProtocol(tabID); err != nil {
 			return control.PermissionSnapshot{}, err
@@ -6480,6 +6489,13 @@ func (a *App) SetPermissionPresetForTab(tabID, preset string, expectedRevision u
 		}
 		ctx, cancel := commandContext(a)
 		defer cancel()
+		live, err := remotePermissionSnapshot(ctx, client, base, expectedPath)
+		if err != nil {
+			return control.PermissionSnapshot{}, err
+		}
+		if err := requirePermissionSession(live, expectedSessionID); err != nil {
+			return live, err
+		}
 		return setRemotePermissionPresetAt(ctx, client, base, expectedPath, preset, expectedRevision)
 	}
 	tab := a.tabByID(tabID)
@@ -6492,17 +6508,28 @@ func (a *App) SetPermissionPresetForTab(tabID, preset string, expectedRevision u
 	if !ok || ctrl == nil {
 		return control.PermissionSnapshot{}, fmt.Errorf("permission presets are unavailable")
 	}
+	// turnStartMu also serializes session navigation, so the session checked
+	// here is the one the preset lands on.
+	live := ctrl.PermissionSnapshot()
+	if err := requirePermissionSession(live, expectedSessionID); err != nil {
+		return live, err
+	}
 	snapshot, _, err := ctrl.SetPermissionPreset(preset, expectedRevision)
 	if err != nil {
 		return snapshot, err
 	}
 	a.mu.Lock()
+	chosenFor := ""
 	if a.tabs[tab.ID] == tab {
 		tab.toolApprovalMode = snapshot.Preset
 		tab.mode = tabModeFromAxes(tabModeHasPlan(tab.mode), snapshot.Preset == control.ToolApprovalDangerFullAccess)
+		if tab.SessionID == snapshot.SessionID {
+			chosenFor = tab.SessionID
+		}
 		a.saveTabsLocked()
 	}
 	a.mu.Unlock()
+	a.sessionPresets.record(chosenFor, snapshot.Preset)
 	return snapshot, nil
 }
 

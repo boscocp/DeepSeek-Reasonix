@@ -25,7 +25,7 @@ import { beginTurnModelActivity, endTurnModelActivity, sampleTurnArguments } fro
 import { normalizeToolApprovalMode } from "./types";
 export { metaFromTab } from "./controllerTabMeta";
 import { invalidateCache } from "./composerHistory";
-import { formatInboxCancelError } from "./inboxError";
+import { formatInboxCancelError, isPermissionSessionChanged } from "./inboxError";
 import type { MessageActionScope, MessageActionState } from "./messageActions";
 import { mergeRateBand, type AggregatedRateBand } from "./costRateBand";
 import { requestSessionCancel, type CancelOutcome } from "./inboxCancel";
@@ -3909,8 +3909,12 @@ export function useController() {
 
   const setToolApprovalModeForTab = useCallback(async (tabId: string, mode: ToolApprovalMode): Promise<void> => {
     if (!tabId) return;
-	const current = await app.PermissionSnapshotForTab(tabId);
-	await app.SetPermissionPresetForTab(tabId, normalizeToolApprovalMode(mode), current.revision);
+    const current = await app.PermissionSnapshotForTab(tabId);
+    try {
+      await app.SetPermissionPresetForTab(tabId, current.sessionId, normalizeToolApprovalMode(mode), current.revision);
+    } catch (error) {
+      if (!isPermissionSessionChanged(error)) throw error;
+    }
     await refreshMetaForTab(tabId);
   }, [refreshMetaForTab]);
 

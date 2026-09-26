@@ -11,7 +11,7 @@ export function useTabProjectionLifecycle(input: {
   setOrder: Dispatch<SetStateAction<string[]>>;
   setProfiles: Dispatch<SetStateAction<Record<string, ComposerProfile>>>;
 }) {
-  const { tabs, activeTabId, meta, planIntentsRef, setOrder, setProfiles } = input;
+  const { tabs, activeTabId, activeMeta, meta, planIntentsRef, setOrder, setProfiles } = input;
   useEffect(() => {
     const ids = tabs.map((tab) => tab.id);
     setOrder((current) => {
@@ -26,6 +26,6 @@ export function useTabProjectionLifecycle(input: {
 
   useEffect(() => {
     if (!activeTabId || !meta) return;
-    setProfiles((current) => hydrateComposerProfileFromMeta(current, activeTabId, meta));
-  }, [activeTabId, meta, setProfiles]);
+    setProfiles((current) => hydrateComposerProfileFromMeta(current, activeTabId, meta, activeMeta));
+  }, [activeMeta, activeTabId, meta, setProfiles]);
 }

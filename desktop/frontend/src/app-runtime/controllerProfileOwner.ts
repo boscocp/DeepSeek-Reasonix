@@ -1,4 +1,4 @@
-import { composerProfileFromTab, composerProfileMode, controllerComposerProfileCollaborationMode, displayedComposerProfileCollaborationMode, type ComposerProfile } from "../lib/composerProfile";
+import { composerProfileForOwner, composerProfileFromTab, composerProfileMode, composerProfileOwner, controllerComposerProfileCollaborationMode, displayedComposerProfileCollaborationMode, type ComposerProfile } from "../lib/composerProfile";
 import type { CollaborationMode, TabMeta, ToolApprovalMode } from "../lib/types";
 import { sessionIdentityKey } from "./sessionTarget";
 import type { SessionOperationAuthority, SessionResource } from "./useSessionOperations";
@@ -21,7 +21,7 @@ export function projectControllerProfiles(tabs: readonly TabMeta[], profiles: Re
       target: { tabId: tab.id, sessionKey: sessionIdentityKey({ tabId: tab.id, sessionPath: tab.sessionPath,
         session: tab.session, sessionId: tab.sessionId, remote: tab.remote, sessionGeneration: tab.sessionGeneration,
         scope: tab.scope, workspaceRoot: tab.workspaceRoot, topicId: tab.topicId }) },
-      profile: runtimeProfile(profiles[tab.id] ?? composerProfileFromTab(tab)), remote: Boolean(tab.remote),
+      profile: runtimeProfile(composerProfileForOwner(profiles[tab.id], composerProfileOwner(tab)) ?? composerProfileFromTab(tab)), remote: Boolean(tab.remote),
     }))];
 }
 
@@ -75,7 +75,7 @@ export function projectVisibleTabs(input: {
   const ordered = input.orderIds.map((id) => byId.get(id)).filter((tab): tab is TabMeta => Boolean(tab));
   const missing = input.tabs.filter((tab) => !input.orderIds.includes(tab.id));
   return [...ordered, ...missing].map((tab) => {
-    const profile = input.profiles[tab.id] ?? composerProfileFromTab(tab);
+    const profile = composerProfileForOwner(input.profiles[tab.id], composerProfileOwner(tab)) ?? composerProfileFromTab(tab);
     return {
       ...tab,
       running: tab.id === input.visibleTabId ? tab.running || input.running : tab.running,
