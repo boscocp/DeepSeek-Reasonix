@@ -43,7 +43,7 @@ export function testPlan(scripts, discovered) {
   if (!discover) throw new Error("CI must include discovery of new frontend tests");
   for (const file of discovered.sort()) {
     const key = `src/__tests__/${file}`;
-    if (!explicit.has(key)) add(["tsx", "--import", "./scripts/css-stub-register.mjs", key]);
+    if (!explicit.has(key)) add(["tsx", "--import", "./scripts/svg-stub-register.mjs", key]);
   }
   return [...explicit.values()];
 }
