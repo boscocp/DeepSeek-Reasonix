@@ -24,7 +24,8 @@ jobs:
       - name: Open pull request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # GITHUB_TOKEN-authored pull requests never trigger CI, so required checks would never report.
+          token: ${{ secrets.ACKNOWLEDGMENTS_TOKEN || secrets.GITHUB_TOKEN }}
           branch: chore/update-acknowledgments
           delete-branch: true
           title: 'Update acknowledgments contributors / 更新致谢贡献者'
