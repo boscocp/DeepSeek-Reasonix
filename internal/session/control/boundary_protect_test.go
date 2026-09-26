@@ -17,7 +17,9 @@ func TestSandboxSettingsPersistChangedFileProtection(t *testing.T) {
 	if !s.ProtectChangedFiles {
 		t.Fatal("changed-file protection should default on")
 	}
-	s.ProtectChangedFiles = false
+	// The subject is the protection switch, not the jail: a host without an OS
+	// sandbox refuses every save that asks for one.
+	s.Bash, s.ProtectChangedFiles = "off", false
 	if err := c.SaveSandboxSettings(s); err != nil {
 		t.Fatal(err)
 	}
