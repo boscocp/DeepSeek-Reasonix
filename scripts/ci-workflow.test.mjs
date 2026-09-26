@@ -48,7 +48,7 @@ test("App memory artifacts support rerunning only failed shards", () => {
   assert.equal(render(build[1], 1), render(aggregateBuild, 2));
   for (const shardId of [1, 2, 3]) {
     assert.equal(render(shardReport[1], shardId === 1 ? 2 : 1, shardId),
-      render(reports, 2).replace("*", String(shardId)));
+      render(reports, 2).replaceAll("*", String(shardId)));
   }
 });
 
