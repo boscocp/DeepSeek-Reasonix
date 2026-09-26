@@ -154,7 +154,7 @@ func (h *botBridgeHub) observe(tabID string, e event.Event) {
 		})
 		watching := len(h.watchers) > 0
 		h.mu.Unlock()
-		if watching {
+		if watching && !e.Replayed {
 			h.enqueue(h.approvalNotification(tabID, e.Approval))
 		}
 	case event.AskRequest:
@@ -166,7 +166,7 @@ func (h *botBridgeHub) observe(tabID string, e event.Event) {
 		})
 		watching := len(h.watchers) > 0
 		h.mu.Unlock()
-		if watching {
+		if watching && !e.Replayed {
 			h.enqueue(h.askNotification(tabID, e.Ask))
 		}
 	case event.TurnDone:
