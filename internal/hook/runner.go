@@ -47,6 +47,17 @@ func NewRunner(hooks []ResolvedHook, cwd string, spawner Spawner, notify func(st
 	return &Runner{hooks: hooks, cwd: cwd, spawner: spawner, notify: notify}
 }
 
+// ForSession gives a child session the same resolved rules and execution
+// environment without sharing mutable session identity with its parent.
+func (r *Runner) ForSession(id string) *Runner {
+	if r == nil {
+		return nil
+	}
+	child := NewRunner(r.hooks, r.cwd, r.spawner, r.notify)
+	child.SetSessionID(id)
+	return child
+}
+
 // Hooks returns the resolved hooks (for `/hooks` listing).
 func (r *Runner) Hooks() []ResolvedHook {
 	if r == nil {

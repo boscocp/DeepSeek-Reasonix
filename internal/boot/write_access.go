@@ -9,6 +9,7 @@ import (
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/event"
+	"reasonix/internal/hook"
 	"reasonix/internal/provider"
 	"reasonix/internal/sandbox"
 	"reasonix/internal/skill"
@@ -25,6 +26,7 @@ func newSubagentSkillOptionsFactory(
 	ablationSet ablation.Set,
 	lease *workspacelease.Owner,
 	writeRoots *sandbox.WritableRootSet,
+	hookRunner *hook.Runner,
 	imageRoutes ...childImageRouting,
 ) func(context.Context, int, *provider.Pricing, int, int) agent.Options {
 	home, stateRoot := userHomeDir(), config.MemoryUserDir()
@@ -44,8 +46,19 @@ func newSubagentSkillOptionsFactory(
 			opts.ImageRequestResolver = imageRoutes[0].controller()
 			opts.ImageInput = imageRoutes[0].config
 		}
+		callID, _, _, _ := agent.CallContext(ctx)
+		opts.Hooks = hookRunner.ForSession("subagent:" + callID)
 		return opts
 	}
+}
+
+func newBootHookRunner(resolved []hook.ResolvedHook, root string, shell sandbox.Shell, sink event.Sink) *hook.Runner {
+	runtime := hook.RuntimeOptions{}
+	if shell.Kind == sandbox.ShellBash {
+		runtime.BashPath = shell.Path
+	}
+	return hook.NewRunner(resolved, root, hook.NewDefaultSpawner(runtime),
+		func(msg string) { sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: msg}) })
 }
 
 func reviewSubagentSkillOptions(
