@@ -197,6 +197,8 @@ export const EN_KERNEL: Record<string, string> = {
   "还没有文件夹，会话需要在文件夹里打开。请先添加一个文件夹": "There is no folder yet, and a session opens in one. Add a folder first",
   "当前没有正在使用的模型，无法记录其窗口大小": "No model is in use, so there is nothing to record a window against",
   "窗口大小已记录，将在本轮结束后生效": "The window is saved; it starts counting once the running work finishes",
+  "已保存。当前对话还有未结束的工作（正在运行、等待你回答或有后台任务），仍按原设置进行；结束后再保存一次即可生效": "Saved. This conversation still has work in progress (running, waiting for your answer, or background jobs), so it keeps its current settings; save again once that finishes to apply them",
+  "已保存。当前对话使用的模型已不在该来源的列表中，切换模型后才会生效": "Saved. This conversation runs on a model the source no longer lists; switch models to apply it",
   "额外设置中的「{path}」不能为空值（null）": "“{path}” in the extra settings cannot be null",
   "图片过大，请压缩至 {limit} MB 以内": "That image is too large — bring it under {limit} MB",
   "{path} 不在当前工作树中，无法查看其改动": "{path} is not inside this working tree, so its changes cannot be shown",
