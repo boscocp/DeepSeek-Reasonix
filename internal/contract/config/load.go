@@ -131,7 +131,7 @@ func (r Roots) loadForRoot(root string, migrateOnDisk bool) (*Config, error) {
 	globalDesktopLanguage := cfg.Desktop.Language
 	globalPricingCurrency := cfg.Desktop.Currency
 	globalBillingDisplayCurrency := cfg.Billing.DisplayCurrency
-	globalTelemetry := cfg.Telemetry
+	globalTelemetry, globalStatusline := cfg.Telemetry, cfg.Statusline
 
 	tomlSources = append(tomlSources, projectTOML)
 	projectMeta, err := mergeTOML(cfg, projectTOML)
@@ -166,9 +166,9 @@ func (r Roots) loadForRoot(root string, migrateOnDisk bool) (*Config, error) {
 	cfg.Desktop.Language = globalDesktopLanguage
 	cfg.Desktop.Currency = globalPricingCurrency
 	cfg.Billing.DisplayCurrency = globalBillingDisplayCurrency
-	// CLI telemetry is an explicit user-global privacy choice. Project config
-	// cannot opt a user in or out, including when the global value is absent.
-	cfg.Telemetry = globalTelemetry
+	// Telemetry is a user-global privacy choice and a statusline a command the TUI
+	// runs unprompted: project config sets neither, even with no global value.
+	cfg.Telemetry, cfg.Statusline = globalTelemetry, globalStatusline
 	// TOML decoding replaces [[plugins]] wholesale, so cfg.Plugins now holds
 	// only the last file's. Re-merge by name across all sources (later wins) so a
 	// project reasonix.toml doesn't drop the global config's MCP servers.

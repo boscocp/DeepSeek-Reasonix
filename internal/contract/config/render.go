@@ -443,15 +443,17 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	}
 	b.WriteString("\n")
 
-	b.WriteString("[statusline]\n")
-	b.WriteString("# A custom status line: a command whose first stdout line replaces the built-in\n")
-	b.WriteString("# data row. It receives {\"model\",\"contextUsed\",\"contextWindow\",\"cwd\"} as JSON on stdin.\n")
-	if c.Statusline.Command != "" {
-		fmt.Fprintf(&b, "command = %q\n", c.Statusline.Command)
-	} else {
-		b.WriteString("# command = \"my-statusline.sh\"\n")
+	if scope != RenderScopeProject {
+		b.WriteString("[statusline]   # user/global only, ./reasonix.toml cannot set it\n")
+		b.WriteString("# A custom status line: a command whose first stdout line replaces the built-in\n")
+		b.WriteString("# data row. It receives {\"model\",\"contextUsed\",\"contextWindow\",\"cwd\"} as JSON on stdin.\n")
+		if c.Statusline.Command != "" {
+			fmt.Fprintf(&b, "command = %q\n", c.Statusline.Command)
+		} else {
+			b.WriteString("# command = \"my-statusline.sh\"\n")
+		}
+		b.WriteString("\n")
 	}
-	b.WriteString("\n")
 
 	renderPassthroughTable(&b, "bot", c.Bot)
 
@@ -925,15 +927,6 @@ func RenderTOMLProjectDelta(c *Config) string {
 			b.WriteString(sandboxBuf.String())
 			b.WriteString("\n")
 		}
-	}
-
-	// [statusline]
-	if !reflect.DeepEqual(c.Statusline, d.Statusline) {
-		b.WriteString("[statusline]\n")
-		if c.Statusline.Command != "" {
-			fmt.Fprintf(&b, "command = %q\n", c.Statusline.Command)
-		}
-		b.WriteString("\n")
 	}
 
 	// [[plugins]] — always include when set; replaces all existing entries

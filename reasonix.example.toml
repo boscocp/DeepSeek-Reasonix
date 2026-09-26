@@ -183,7 +183,8 @@ stalled_warning_seconds = 900   # warn once per background job after this many q
 #       "Stop":        [ { "command": "notify-send 'turn done'" } ] } }
 
 # A custom status line: a command whose first stdout line replaces the built-in
-# data row. It receives {"model","contextUsed","contextWindow"} as JSON on stdin.
+# data row. It receives {"model","contextUsed","contextWindow","cwd"} as JSON on stdin.
+# user/global only: set it in <Reasonix home>/config.toml; ./reasonix.toml cannot.
 # [statusline]
 # command = "my-statusline.sh"
 

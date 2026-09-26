@@ -33,6 +33,9 @@ type Options struct {
 	Inline bool
 	// HideTurnUsage keeps each request's token and cost receipt off the transcript.
 	HideTurnUsage bool
+	// Statusline, when set, turns the footer's context JSON into one line
+	// that replaces the telemetry row; "" keeps the built-in row.
+	Statusline func(ctx context.Context, stdin string) string
 }
 
 // Run drives the terminal until the user quits or ctx ends.
@@ -79,6 +82,7 @@ type model struct {
 	cancelling    bool
 	apSel         approvalSel
 	balance       string
+	statusline    string
 	compaction    Compaction
 	scr           *screen
 	picker        *sessionPicker
@@ -183,6 +187,7 @@ func (m *model) fetchHistory(reprint bool) tea.Cmd {
 type metersMsg struct {
 	balance    string
 	compaction *Compaction
+	statusline *string
 }
 
 // fetchMeters reads what the footer shows that changes only between turns:
@@ -193,6 +198,12 @@ func (m *model) fetchMeters() tea.Cmd {
 		out.balance, _, _ = m.client.Balance(m.ctx)
 		if c, err := m.client.Compaction(m.ctx); err == nil {
 			out.compaction = &c
+		}
+		if run := m.opts.Statusline; run != nil {
+			if s, err := m.client.Status(m.ctx); err == nil {
+				line := run(m.ctx, statuslinePayload(s))
+				out.statusline = &line
+			}
 		}
 		return out
 	}
@@ -238,6 +249,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.balance = msg.balance
 		if msg.compaction != nil {
 			m.compaction = *msg.compaction
+		}
+		if msg.statusline != nil {
+			m.statusline = *msg.statusline
 		}
 		return m, nil
 	case spinMsg:
