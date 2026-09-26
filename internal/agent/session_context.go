@@ -120,7 +120,7 @@ func (a *Agent) AppendTurnContextAndUserChecked(ctx context.Context, user provid
 	if err != nil {
 		return false, err
 	}
-	emitAdmittedUserMessage(a.svc.sink, user)
+	a.admitUserMessage(ctx, user)
 	return appendedContext, nil
 }
 

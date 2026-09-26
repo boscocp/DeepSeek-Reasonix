@@ -641,6 +641,7 @@ func (c *Controller) RecordSessionMessages(ctx context.Context, reason string, m
 	_, err := c.appendSessionBatch(ctx, store, session.Batch{OperationID: op, TurnID: snapshot.Projection.TurnID, Events: events})
 	if err == nil {
 		c.noteCommittedMessagesLocked(events)
+		c.settleOpenStreamLocked(messages)
 	}
 	return err
 }

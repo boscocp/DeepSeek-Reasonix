@@ -54,6 +54,9 @@ type Projection struct {
 	TitleSequence uint64
 	ModelRef      string
 	ModelIdentity string
+	// StreamCheckpoint is the open turn's newest uncommitted stream output;
+	// it is replaced, never mutated, so shallow projection copies may share it.
+	StreamCheckpoint *provider.Message `json:"streamCheckpoint,omitempty"`
 }
 
 type TurnBoundary struct {
@@ -130,8 +133,11 @@ func applyProjectionEvents(projection *Projection, commit Commit) error {
 	closedBefore := len(projection.Turns)
 	for _, ev := range commit.Events {
 		projection.CommittedSequence = ev.Sequence
+		supersedeStreamCheckpoint(projection, ev.Kind)
 		var err error
 		switch ev.Kind {
+		case StreamCheckpointKind:
+			projectStreamCheckpoint(projection, ev)
 		case "submission/accepted":
 			err = projectSubmission(projection, commit, ev)
 		case "legacy/import":

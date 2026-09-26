@@ -27,6 +27,9 @@ func (c *Controller) autosaveWhileRunning(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			if err := c.checkpointOpenStream(ctx); err != nil {
+				slog.Warn("controller: open stream checkpoint", "err", err)
+			}
 			if err := c.snapshot(false, false, false); err != nil {
 				slog.Warn("controller: mid-turn snapshot", "err", err)
 			}
