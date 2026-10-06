@@ -41,7 +41,31 @@ type mcpManager struct {
 func (m *mcpManager) seal(reason error) { m.sealed = reason }
 
 func newMcpManager(host *plugin.Host, reg *tool.Registry, pluginCtx context.Context, defaultCallTimeout time.Duration) mcpManager {
+	watchToolListChanges(host, reg, pluginCtx)
 	return mcpManager{host: host, reg: reg, pluginCtx: pluginCtx, defaultCallTimeout: defaultCallTimeout}
+}
+
+// watchToolListChanges keeps this session's registry in step with a server that
+// announces a changed tool list. The host may be shared between sessions, so
+// each one registers the refreshed catalog into its own registry.
+func watchToolListChanges(host *plugin.Host, reg *tool.Registry, pluginCtx context.Context) {
+	if host == nil || reg == nil {
+		return
+	}
+	host.SubscribeToolListChanges(pluginCtx, func(spec plugin.Spec, tools []tool.Tool) {
+		registerRefreshedMCPTools(reg, spec, tools)
+	})
+}
+
+// registerRefreshedMCPTools swaps one server's tools for the set it now offers.
+// The prefix is deliberately not resumed: a session that suspended this server
+// turned it off, and a server announcing new tools is not the user asking for
+// it back.
+func registerRefreshedMCPTools(reg *tool.Registry, spec plugin.Spec, tools []tool.Tool) {
+	reg.RemovePrefix(plugin.ToolPrefix(spec.Name))
+	for _, t := range tools {
+		reg.Add(t)
+	}
 }
 
 // hostRef returns the live plugin host (nil until one is injected or lazily
@@ -59,12 +83,7 @@ func (m *mcpManager) connectSpec(s plugin.Spec) (int, error) {
 	if m.sealed != nil {
 		return 0, m.sealed
 	}
-	m.mu.Lock()
-	if m.host == nil {
-		m.host = plugin.NewHost()
-	}
-	host, ctx, reg := m.host, m.pluginCtx, m.reg
-	m.mu.Unlock()
+	host, ctx, reg := m.ensureHost()
 	plugin.ApplyDisabledMCPPolicy(reg, s)
 
 	tools, err := host.Add(ctx, s)
@@ -97,12 +116,7 @@ func (m *mcpManager) registerSpecOnDemand(s plugin.Spec) (int, error) {
 	if m.sealed != nil {
 		return 0, m.sealed
 	}
-	m.mu.Lock()
-	if m.host == nil {
-		m.host = plugin.NewHost()
-	}
-	host, ctx, reg := m.host, m.pluginCtx, m.reg
-	m.mu.Unlock()
+	host, ctx, reg := m.ensureHost()
 	plugin.ApplyDisabledMCPPolicy(reg, s)
 
 	var tools []tool.Tool
@@ -127,6 +141,22 @@ func (m *mcpManager) registerSpecOnDemand(s plugin.Spec) (int, error) {
 		}
 	}
 	return len(tools), nil
+}
+
+// ensureHost returns the live host, creating it on first use. A host created
+// here starts watching for catalog changes before any server connects to it.
+func (m *mcpManager) ensureHost() (*plugin.Host, context.Context, *tool.Registry) {
+	m.mu.Lock()
+	created := m.host == nil
+	if created {
+		m.host = plugin.NewHost()
+	}
+	host, ctx, reg := m.host, m.pluginCtx, m.reg
+	m.mu.Unlock()
+	if created {
+		watchToolListChanges(host, reg, ctx)
+	}
+	return host, ctx, reg
 }
 
 // disconnect drops a live server and its tools from the registry. Reports whether
