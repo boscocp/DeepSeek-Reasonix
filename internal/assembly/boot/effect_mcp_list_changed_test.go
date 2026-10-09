@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"reasonix/internal/contract/config"
 	"reasonix/internal/contract/event"
 	"reasonix/internal/contract/provider"
 	"reasonix/internal/session/control"
@@ -126,10 +127,15 @@ model = "x"
 // finishes the turn on any round the script leaves out. Rounds are counted
 // across turns, so the script says which turn each call lands in.
 type listChangedProvider struct {
-	mu    sync.Mutex
-	reqs  []provider.Request
+	mu   sync.Mutex
+	reqs []provider.Request
+	// round counts provider requests across turns, so a script says which turn
+	// each call lands in.
 	round int
-	calls map[int]string
+	// calls are use_capability calls by round; direct are calls to a tool the
+	// provider schema itself carries, which is the surface a pinned server has.
+	calls  map[int]string
+	direct map[int]string
 }
 
 func (p *listChangedProvider) Name() string { return "boot-mcp-list-changed" }
@@ -139,15 +145,20 @@ func (p *listChangedProvider) Stream(_ context.Context, req provider.Request) (<
 	p.reqs = append(p.reqs, req)
 	round := p.round
 	p.round++
-	call := p.calls[round]
+	call, direct := p.calls[round], p.direct[round]
 	p.mu.Unlock()
 
 	ch := make(chan provider.Chunk, 2)
-	if call != "" {
+	switch {
+	case call != "":
 		ch <- provider.Chunk{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{
 			ID: fmt.Sprintf("probe-%d", round), Name: "use_capability", Arguments: call,
 		}}
-	} else {
+	case direct != "":
+		ch <- provider.Chunk{Type: provider.ChunkToolCall, ToolCall: &provider.ToolCall{
+			ID: fmt.Sprintf("probe-%d", round), Name: direct, Arguments: "{}",
+		}}
+	default:
 		ch <- provider.Chunk{Type: provider.ChunkText, Text: "ok"}
 	}
 	ch <- provider.Chunk{Type: provider.ChunkDone}
@@ -261,4 +272,153 @@ func waitForRegisteredTool(t *testing.T, ctrl *control.Controller, name string) 
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("%s never reached the registry after notifications/tools/list_changed", name)
+}
+
+// A pinned server's tools are in the provider-visible array from the session's
+// first request, so one it drops would rewrite that array. It does not move:
+// the schema stays, its call fails with the typed not-found, the model is told
+// on the turn tail, and the next session never lists it. stdio only — each
+// Build spawns a helper from the same catalog; both transports are covered above.
+func TestEffectMCPListChangedKeepsAPinnedToolSurface(t *testing.T) {
+	home := isolateConfigHome(t)
+	reasonixHome := filepath.Join(home, ".reasonix")
+	t.Setenv("REASONIX_HOME", reasonixHome)
+	workspace := robustTempDir(t)
+	t.Chdir(workspace)
+
+	kind := "boot-mcp-list-changed-pinned"
+	var rec atomic.Pointer[listChangedProvider]
+	provider.Register(kind, func(provider.Config) (provider.Provider, error) { return rec.Load(), nil })
+	writeFile(t, workspace, "reasonix.toml", listChangedConfig(kind, listChangedServerBlock(t, "stdio")))
+	approveWorkspace(t, workspace)
+	approveProjectServer(t, workspace, "live")
+
+	// Session one only warms the schema cache: no tool is called, so the server
+	// never announces and the catalog it cached is the one it started from.
+	warm := &listChangedProvider{}
+	rec.Store(warm)
+	first, err := Build(t.Context(), Options{Sink: event.Discard, Home: reasonixHome, WorkspaceRoot: workspace})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	waitForRegisteredTool(t, first, "mcp__live__beta")
+	first.Close()
+	waitForCachedMCPTool(t, "live", "beta")
+
+	// Session two is pinned: the server's tools are in the provider schema from
+	// its first request, and it drops one mid-session.
+	live := &listChangedProvider{direct: map[int]string{0: "mcp__live__alpha", 2: "mcp__live__beta"}}
+	rec.Store(live)
+	ctrl, err := Build(t.Context(), Options{Sink: event.Discard, Home: reasonixHome, WorkspaceRoot: workspace})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	t.Cleanup(ctrl.Close)
+
+	if err := ctrl.Run(t.Context(), "call the pinned tool"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	pinned := mcpToolNames(live.requests()[0])
+	if !slices.Equal(pinned, []string{"mcp__live__alpha", "mcp__live__beta"}) {
+		t.Fatalf("the first request carried %v, want the cached catalog pinned into the schema", pinned)
+	}
+	waitForRegisteredTool(t, ctrl, "mcp__live__gamma")
+
+	if err := ctrl.Run(t.Context(), "call the tool the server dropped"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	requests := live.requests()
+	last := requests[len(requests)-1]
+	if moved := toolSurfaceDrift(requests[0], last); len(moved) != 0 {
+		t.Fatalf("the provider-visible tools array moved with the catalog: %v", moved)
+	}
+	if got := toolResults(requests)["probe-2"]; !strings.Contains(got, `not found on server "live"`) {
+		t.Fatalf("call to the withdrawn tool returned %q, want the typed not-found", got)
+	}
+	if !containsMessage(last, "withdrew mcp__live__beta") {
+		t.Fatalf("the turn tail never told the model what the server withdrew:\n%s", strings.Join(messageTexts(last), "\n"))
+	}
+	if sys, after := systemMessage(requests[0].Messages), systemMessage(last.Messages); sys != after {
+		t.Fatalf("the cache-stable prefix moved with the catalog:\n before: %.200q\n  after: %.200q", sys, after)
+	}
+
+	// Session three reads the refreshed cache: the withdrawn tool is gone from
+	// the surface, and what the server added is pinned in its place.
+	next := &listChangedProvider{}
+	rec.Store(next)
+	third, err := Build(t.Context(), Options{Sink: event.Discard, Home: reasonixHome, WorkspaceRoot: workspace})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	t.Cleanup(third.Close)
+	if err := third.Run(t.Context(), "say ok"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	got := mcpToolNames(next.requests()[0])
+	if !slices.Equal(got, []string{"mcp__live__alpha", "mcp__live__delta", "mcp__live__gamma"}) {
+		t.Fatalf("the next session pinned %v, want the catalog the refresh cached", got)
+	}
+}
+
+// toolSurfaceDrift names the entries two requests do not share. The whole array
+// is compared — a changed description moves the prefix as a changed name does —
+// but only what moved is worth printing.
+func toolSurfaceDrift(before, after provider.Request) []string {
+	entries := func(req provider.Request) map[string]string {
+		out := make(map[string]string, len(req.Tools))
+		for _, s := range req.Tools {
+			out[s.Name] = s.Description + "|" + string(s.Parameters)
+		}
+		return out
+	}
+	was, is := entries(before), entries(after)
+	var moved []string
+	for name, body := range was {
+		switch current, ok := is[name]; {
+		case !ok:
+			moved = append(moved, name+" (dropped)")
+		case current != body:
+			moved = append(moved, name+" (rewritten)")
+		}
+	}
+	for name := range is {
+		if _, ok := was[name]; !ok {
+			moved = append(moved, name+" (added)")
+		}
+	}
+	slices.Sort(moved)
+	return moved
+}
+
+func messageTexts(req provider.Request) []string {
+	out := make([]string, 0, len(req.Messages))
+	for _, m := range req.Messages {
+		out = append(out, string(m.Role)+": "+m.Content)
+	}
+	return out
+}
+
+func containsMessage(req provider.Request, want string) bool {
+	for _, m := range req.Messages {
+		if strings.Contains(m.Content, want) {
+			return true
+		}
+	}
+	return false
+}
+
+// waitForCachedMCPTool waits for the handshake's schema write, which the next
+// session pins its provider surface from. The write is detached, so a session
+// holding the tools may not have cached them yet.
+func waitForCachedMCPTool(t *testing.T, server, tool string) {
+	t.Helper()
+	path := filepath.Join(config.CacheDir(), "mcp", server+".json")
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if body, err := os.ReadFile(path); err == nil && strings.Contains(string(body), `"`+tool+`"`) {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("%s never reached the schema cache at %s", tool, path)
 }

@@ -28,8 +28,11 @@ type listChangedServer struct {
 	// selfNotify stands for a server that announces on every listing, which is
 	// what bounded catch-up exists for.
 	selfNotify bool
-	lists      atomic.Int64
-	calls      atomic.Int64
+	// destructive names the tools the server annotates as destructive, which is
+	// one of the facts the host's gate reads before a call runs.
+	destructive map[string]bool
+	lists       atomic.Int64
+	calls       atomic.Int64
 }
 
 func newListChangedServer(t *testing.T, declare bool, tools ...string) (*listChangedServer, *httptest.Server) {
@@ -102,11 +105,15 @@ func (s *listChangedServer) catalog() []map[string]any {
 	defer s.mu.Unlock()
 	out := make([]map[string]any, 0, len(s.tools))
 	for _, name := range s.tools {
-		out = append(out, map[string]any{
+		entry := map[string]any{
 			"name":        name,
 			"description": "tool " + name,
 			"inputSchema": map[string]any{"type": "object"},
-		})
+		}
+		if s.destructive[name] {
+			entry["annotations"] = map[string]any{"destructiveHint": true}
+		}
+		out = append(out, entry)
 	}
 	return out
 }
@@ -471,5 +478,77 @@ func TestToolListChangedRewritesTheSchemaCache(t *testing.T) {
 	slices.Sort(names)
 	if !slices.Equal(names, []string{"alpha", "gamma"}) {
 		t.Fatalf("cached catalog = %v, want the one the server moved to", names)
+	}
+}
+
+// A connected server can add a tool after startup, which is the boundary this
+// change moves. What arrives has to reach the host's gate carrying the same
+// facts a startup tool does — the server's authorization and its own
+// annotations — or a tool could get past a check by arriving late.
+func TestToolListChangedCarriesTheStartupSecurityFacts(t *testing.T) {
+	server, srv := newListChangedServer(t, true, "alpha")
+	server.destructive = map[string]bool{"gamma": true}
+	h, published := connectListChanged(t, srv, Spec{Authorized: true})
+
+	startup, err := h.ToolsFor(t.Context(), "live")
+	if err != nil {
+		t.Fatalf("ToolsFor: %v", err)
+	}
+	if len(startup) != 1 || !tool.IsMCPServerAuthorized(startup[0]) {
+		t.Fatalf("startup tool authorization = %v, want the spec's", names(startup))
+	}
+
+	server.announce(1, "alpha", "gamma")
+	if _, err := h.lookupClient("live").call(t.Context(), "tools/call",
+		map[string]any{"name": "alpha", "arguments": map[string]any{}}); err != nil {
+		t.Fatalf("tools/call: %v", err)
+	}
+	waitForCatalog(t, published)
+
+	refreshed, err := h.ToolsFor(t.Context(), "live")
+	if err != nil {
+		t.Fatalf("ToolsFor after refresh: %v", err)
+	}
+	byName := map[string]tool.Tool{}
+	for _, tl := range refreshed {
+		byName[tl.Name()] = tl
+	}
+	arrived, ok := byName["mcp__live__gamma"]
+	if !ok {
+		t.Fatalf("the added tool never reached the catalog: %v", names(refreshed))
+	}
+	if !tool.IsMCPServerAuthorized(arrived) {
+		t.Fatal("a tool that arrived mid-session lost the server authorization its siblings carry")
+	}
+	if !tool.HasMCPDestructiveHint(arrived) {
+		t.Fatal("a tool that arrived mid-session lost the destructive hint it declared")
+	}
+	if tool.HasMCPDestructiveHint(byName["mcp__live__alpha"]) {
+		t.Fatal("the refresh marked an undeclared tool destructive")
+	}
+}
+
+// An unauthorized server stays unauthorized for whatever it adds later: the
+// approval is the user's answer about the server, and a server cannot answer
+// it for them by announcing a new tool.
+func TestToolListChangedCannotSelfAuthorize(t *testing.T) {
+	server, srv := newListChangedServer(t, true, "alpha")
+	h, published := connectListChanged(t, srv, Spec{})
+
+	server.announce(1, "alpha", "gamma")
+	if _, err := h.lookupClient("live").call(t.Context(), "tools/call",
+		map[string]any{"name": "alpha", "arguments": map[string]any{}}); err != nil {
+		t.Fatalf("tools/call: %v", err)
+	}
+	waitForCatalog(t, published)
+
+	refreshed, err := h.ToolsFor(t.Context(), "live")
+	if err != nil {
+		t.Fatalf("ToolsFor after refresh: %v", err)
+	}
+	for _, tl := range refreshed {
+		if tool.IsMCPServerAuthorized(tl) {
+			t.Fatalf("%s reported an authorization the user never gave", tl.Name())
+		}
 	}
 }
